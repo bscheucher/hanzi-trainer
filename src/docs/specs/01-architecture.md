@@ -80,7 +80,10 @@ spring:
 
 hanzi:
   storage.upload-dir: ./data/uploads
-  cedict.file: ./data/cedict/cedict_ts.u8
+  cedict:
+    file: ./data/cedict/cedict_ts.u8
+    import-on-startup: true      # import when cedict_entry is empty and the file exists
+  admin.enabled: true            # /api/admin/** endpoints
   llm:
     provider: anthropic          # anthropic | ollama
     extraction-model: <vision-capable model name>

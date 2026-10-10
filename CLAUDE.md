@@ -38,6 +38,7 @@ The backend is the Gradle project at the repo root; the frontend lives in `front
 
 ```bash
 cp .env.example .env                 # once; set HANZI_DB_PASSWORD (never commit .env)
+# once: CC-CEDICT from MDBG, unzipped to data/cedict/cedict_ts.u8 (spec 04); imported on first start
 docker compose up -d                 # PostgreSQL on localhost:5433
 ./gradlew bootRun                    # API on http://localhost:8080
 ./gradlew build                      # compile + tests (needs Docker for Testcontainers)
