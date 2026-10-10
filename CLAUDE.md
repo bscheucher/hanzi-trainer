@@ -32,7 +32,9 @@ disagree, ask before changing the spec.
   `hanzi-writer`, HanziLookupJS
 - **Infra:** `docker-compose.yml` with PostgreSQL 16 on host port 5433 (5432 is often taken by a native install)
 
-The backend is the Gradle project at the repo root; the frontend lives in `frontend/`.
+This repository is the backend (Gradle project at the repo root) and holds all specs. The frontend is a separate
+repository, `../hanzi-trainer-frontend` (github.com/bscheucher/hanzi-trainer-frontend), with its own `CLAUDE.md`
+for frontend conventions; it reads its specs from here.
 
 ## Commands
 
@@ -42,8 +44,8 @@ cp .env.example .env                 # once; set HANZI_DB_PASSWORD (never commit
 docker compose up -d                 # PostgreSQL on localhost:5433
 ./gradlew bootRun                    # API on http://localhost:8080
 ./gradlew build                      # compile + tests (needs Docker for Testcontainers)
-cd frontend && npm run dev           # UI on http://localhost:3000
-cd frontend && npm test              # Vitest
+cd ../hanzi-trainer-frontend && npm run dev   # UI on http://localhost:3000
+cd ../hanzi-trainer-frontend && npm test      # Vitest
 HANZI_LLM_TEST=true ./gradlew llmTest  # opt-in: real LLM from .env (costs money with Anthropic)
 ```
 
@@ -63,14 +65,8 @@ HANZI_LLM_TEST=true ./gradlew llmTest  # opt-in: real LLM from .env (costs money
 - Every service gets unit tests; every controller gets a `@WebMvcTest` or a Testcontainers integration test.
 
 ### Frontend
-- App Router, server components by default; `"use client"` only where interactivity is needed
-  (canvas, exercise player, upload).
-- API calls through a single typed client in `frontend/src/lib/api.ts`; types in `frontend/src/lib/types.ts`
-  mirror the DTOs in `src/docs/specs/03-api.md`.
-- Backend base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
-- UI language: English labels; German meanings shown when available.
-- Chinese text always rendered with `lang="zh-CN"` and a CJK font stack
-  (`"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`).
+See `CLAUDE.md` in `../hanzi-trainer-frontend`. Its types mirror the DTOs in `src/docs/specs/03-api.md`, and
+`src/lib/pinyin-syllables.ts` there is a copy of `src/main/resources/pinyin/syllables.txt` — change both together.
 
 ### Chinese-text rules (apply everywhere)
 - Simplified characters only.
@@ -83,5 +79,7 @@ HANZI_LLM_TEST=true ./gradlew llmTest  # opt-in: real LLM from .env (costs money
 ## Working agreement for Claude Code
 - Implement one milestone per session. Start by restating the milestone's acceptance criteria.
 - Before writing code for a milestone, list the files you will create/change.
-- Finish a milestone only when `./gradlew build` and `npm test` pass and the acceptance criteria are met.
+- A milestone usually spans both repositories: one branch and PR per repo.
+- Finish a milestone only when `./gradlew build` passes here, `npm test` / `npm run typecheck` / `npm run lint` /
+  `npm run build` pass in the frontend repo, and the acceptance criteria are met.
 - If a spec is ambiguous, ask instead of guessing.
