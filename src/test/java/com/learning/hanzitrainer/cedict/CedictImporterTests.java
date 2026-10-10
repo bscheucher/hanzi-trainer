@@ -15,6 +15,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -91,6 +95,33 @@ class CedictImporterTests {
         assertThat(linkOf("干")).isEqualTo(lowestGanId);
         assertThat(linkOf("龘")).isNull();
         assertThat(cedictService.lookup("干").getFirst().getTraditional()).isEqualTo("乹");
+    }
+
+    @Test
+    void concurrentImportsDoNotDuplicateEntries() throws Exception {
+        // Large enough that the two transactions overlap.
+        String lines = IntStream.range(0, 20_000)
+                .mapToObj(i -> "詞%1$d 词%1$d [ci2] /word %1$d/".formatted(i))
+                .collect(Collectors.joining("\n"));
+        Path file = Files.writeString(dir.resolve("big.u8"), lines);
+        CountDownLatch start = new CountDownLatch(1);
+
+        var first = CompletableFuture.runAsync(() -> awaitThenImport(start, file));
+        var second = CompletableFuture.runAsync(() -> awaitThenImport(start, file));
+        start.countDown();
+        CompletableFuture.allOf(first, second).get();
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM cedict_entry", Integer.class)).isEqualTo(20_000);
+    }
+
+    private void awaitThenImport(CountDownLatch start, Path file) {
+        try {
+            start.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+        importer.importFile(file);
     }
 
     @Test

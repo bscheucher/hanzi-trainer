@@ -60,6 +60,9 @@ public class CedictImporter {
         }
         long start = System.nanoTime();
 
+        // Serialise imports (startup import vs. admin endpoint): without the lock, a concurrent DELETE cannot see
+        // the other transaction's uncommitted inserts and both sets of rows survive. EXCLUSIVE still allows reads.
+        jdbc.execute("LOCK TABLE cedict_entry IN EXCLUSIVE MODE");
         // Not TRUNCATE: the FK from word makes it fail, and TRUNCATE ... CASCADE would empty word.
         jdbc.update("UPDATE word SET cedict_entry_id = NULL WHERE cedict_entry_id IS NOT NULL");
         jdbc.update("DELETE FROM cedict_entry");
