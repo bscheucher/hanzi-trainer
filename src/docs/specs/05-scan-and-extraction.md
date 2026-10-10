@@ -3,7 +3,8 @@
 ## Upload flow
 
 1. `POST /api/lessons/{id}/pages` (multipart).
-2. Validate: content type `image/jpeg`, `image/png` or `image/webp`; ≤ 20 MB. Else 415/413.
+2. Validate: JPEG or PNG, recognised by magic bytes (not the declared content type); ≤ 20 MB. Else 415/413.
+   No WebP: JDK ImageIO cannot decode it and the client always sends JPEG anyway.
    Client side, before upload: draw the image onto a canvas (current browsers apply EXIF orientation
    when decoding), downscale the long side to `max-image-px`, and export JPEG quality 0.9. This also converts
    HEIC on Safari; if the browser cannot decode the file, show "please upload JPEG/PNG".
@@ -24,9 +25,16 @@ PENDING → RUNNING → DONE
 2. Call `VocabularyExtractor.extract(byte[] jpeg) : ExtractionResult`.
 3. Validate result (see below). Store as JSON in `raw_extraction`, set `extraction_model`, `DONE`.
 4. On any exception: `FAILED`, short message in `error_message`, full stack trace in the log.
-5. Timeout: 120 s per page.
+5. Timeout: 120 s per model call. At most `hanzi.extraction.max-concurrent` calls run at once (default 1 for
+   Ollama, 2 for Anthropic); a page waits as `PENDING` for a free slot, and waiting does not count towards its
+   timeout. On timeout the call is interrupted; the HTTP clients' own timeouts (`spring.ai.anthropic.timeout`,
+   `spring.http.clients.read-timeout`) are the backstop, and Spring AI retries are limited to 2 attempts.
 
-On startup, pages stuck in `RUNNING` are reset to `FAILED` ("interrupted by restart").
+On startup (before the web server accepts uploads), pages left `PENDING` or `RUNNING` are set to `FAILED`
+("Interrupted by restart"): jobs live only in memory, so nothing would ever finish them.
+Re-running extraction (`POST /pages/{id}/extract`) atomically moves a `DONE` or `FAILED` page back to `PENDING`;
+on a `PENDING` page (job already queued) it does nothing, on `RUNNING` it is a 409. The previous `raw_extraction`
+is kept until the new run succeeds.
 
 ## Interface
 
@@ -34,11 +42,15 @@ On startup, pages stuck in `RUNNING` are reset to `FAILED` ("interrupted by rest
 public interface VocabularyExtractor {
     ExtractionResult extract(byte[] jpegImage);
     String modelName();
+    default Optional<String> unavailableReason() { return Optional.empty(); } // non-empty → endpoints answer 503
 }
 ```
 
 Implementation `SpringAiVocabularyExtractor` uses `ChatClient` with the image as `Media`
-(`MimeTypeUtils.IMAGE_JPEG`) and `.call().entity(ExtractionResult.class)`.
+(`MimeTypeUtils.IMAGE_JPEG`) and `.call().entity(ExtractionResult.class)` with
+`AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT`: the JSON schema goes to the provider (Anthropic structured outputs,
+Ollama `format`) instead of being appended to the prompt. With the schema in the prompt, `gemma3:4b` ignored the
+image and invented a page. `UnavailableVocabularyExtractor` stands in when the provider is not configured.
 
 ## ExtractionResult (also the JSON stored in `raw_extraction`)
 
@@ -79,19 +91,21 @@ Requirements the prompt must state:
 - Proper nouns (names, places) are included with partOfSpeech `"name"`.
 - Measure words get partOfSpeech `"m"`.
 - Report problems in `warnings` instead of guessing silently; lower `confidence` for unclear characters.
-- Output must match the JSON schema exactly (Spring AI appends the schema).
+- (The JSON schema is enforced by native structured output; the prompt does not repeat it.)
 
 ## Validation after extraction
 
 Drop (and add a warning for) items where:
 - `hanzi` is empty or contains no CJK characters (U+4E00–U+9FFF, U+3400–U+4DBF).
-- `hanzi` contains digits or characters other than CJK and Latin letters. (Mixed words such as
-  `T恤` or `卡拉OK` are kept.)
+- `hanzi` contains digits or characters other than CJK (incl. `〇`), Latin letters and the name separator `·`.
+  (Mixed words such as `T恤`, `卡拉OK` and transliterated names such as `马克·吐温` are kept.)
 
 Deduplicate items within one page on `(hanzi, toNumbered(pinyin))`.
 
 ## Tests
 
 - `FakeVocabularyExtractor` returning a fixed `ExtractionResult` for service/integration tests.
-- One opt-in test (`@EnabledIfEnvironmentVariable(named = "ANTHROPIC_API_KEY", ...)`, tagged `llm`,
-  excluded from `./gradlew build` via `excludeTags 'llm'`) that sends `src/test/resources/sample-page.jpg` to the real model.
+- One opt-in test (`RealModelExtractionTests`, tagged `llm`, enabled by `HANZI_LLM_TEST=true`) that sends
+  `src/test/resources/sample-page.jpg` (a rendered lesson-1 vocabulary page) to the **configured** provider and model.
+  Run with `HANZI_LLM_TEST=true ./gradlew llmTest`; `./gradlew build` excludes the tag. Verified with Ollama
+  `gemma3:4b`; with Anthropic it costs money.

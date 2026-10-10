@@ -9,9 +9,13 @@ export const NAV_ITEMS = [
   { href: "/review", label: "Review" },
 ] as const;
 
+/** Nav bar with the current section highlighted. */
 export default function NavBar() {
-  const pathname = usePathname();
+  return <NavLinks pathname={usePathname()} />;
+}
 
+/** Rendered without highlight while the URL is not known yet (Suspense fallback during prerendering). */
+export function NavLinks({ pathname }: { pathname: string | null }) {
   return (
     <header className="border-b border-border">
       <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
@@ -22,7 +26,7 @@ export default function NavBar() {
           Hanzi Trainer
         </Link>
         {NAV_ITEMS.map(({ href, label }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
+          const active = pathname !== null && (pathname === href || pathname.startsWith(`${href}/`));
           return (
             <Link
               key={href}

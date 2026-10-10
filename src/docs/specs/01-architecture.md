@@ -72,11 +72,13 @@ spring:
     max-file-size: 20MB
     max-request-size: 25MB
   threads.virtual.enabled: true
+  jpa.properties.hibernate.type.json_format_mapper: jackson3   # Spring AI adds Jackson 2; entities use Jackson 3
   ai:
+    model.chat: ${hanzi.llm.provider}   # Spring AI creates only the selected provider's ChatModel
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:}
     ollama:
-      base-url: http://localhost:11434
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
 
 hanzi:
   storage.upload-dir: ./data/uploads
@@ -85,10 +87,13 @@ hanzi:
     import-on-startup: true      # import when cedict_entry is empty and the file exists
   admin.enabled: true            # /api/admin/** endpoints
   llm:
-    provider: anthropic          # anthropic | ollama
-    extraction-model: <vision-capable model name>
-    exercise-model: <model name>
-  extraction.max-image-px: 1568  # long side; check the provider's image limits for the configured model
+    provider: ${HANZI_LLM_PROVIDER:anthropic}                 # anthropic | ollama
+    extraction-model: ${HANZI_EXTRACTION_MODEL:claude-opus-5-5}  # Ollama: a vision model, e.g. gemma3:4b
+    exercise-model: <model name>                              # M7
+  extraction:
+    max-image-px: 2576   # Claude's high-resolution limit (long edge); the client resizes to the same value
+    timeout: 120s        # per model call; local models on modest hardware may need more on a cold start
+    # max-concurrent: 1  # model calls at once; default 1 for ollama, 2 for anthropic
   exercises.default-session-size: 15
   review:
     new-per-day: 15
@@ -100,19 +105,20 @@ Model names are configuration, never hard-coded.
 
 ## LLM provider selection
 
-- Two `ChatClient` beans, `extractionChatClient` and `exerciseChatClient`, both built from the provider
-  selected by `hanzi.llm.provider`, with the model set via default chat options from
-  `hanzi.llm.extraction-model` / `hanzi.llm.exercise-model`.
-- Exclude the auto-configuration of the provider that is not used, or use
-  `@ConditionalOnProperty` so the app starts without an Anthropic key when using Ollama.
-- If the selected provider is not configured, the app still starts; LLM endpoints return
-  `503` with a ProblemDetail explaining which setting is missing.
+- Spring AI 2.0.x (its Anthropic module uses the official `anthropic-java` SDK). `spring.ai.model.chat` follows
+  `hanzi.llm.provider`, so only the selected provider's `ChatModel` exists.
+- One `ChatClient` per purpose, built in `LlmConfig` from that `ChatModel` with the model name and `maxTokens`
+  as default options: extraction now, exercises in M7. Current Claude models always think, so `maxTokens` is
+  generous (16k), and no `temperature` is set (Claude Opus 5.5 rejects sampling parameters).
+- If the selected provider is not configured (e.g. no `ANTHROPIC_API_KEY`), the app still starts; LLM endpoints
+  return `503` with a ProblemDetail explaining which setting is missing.
 
 ## Spring Boot 4 notes (verify when adding dependencies in M0)
 
 - Auto-configuration is modular in Boot 4: Flyway needs `spring-boot-starter-flyway` plus
   `org.flywaydb:flyway-database-postgresql`.
-- Boot 4 uses Jackson 3 (`tools.jackson.*`); check which `JsonNode` Hibernate's JSON mapping expects.
+- Boot 4 uses Jackson 3 (`tools.jackson.*`). Hibernate picks Jackson 2 for JSON columns whenever it is on the
+  classpath (Spring AI brings it), so `hibernate.type.json_format_mapper: jackson3` is set explicitly.
 - Use the Spring AI release line that supports the pinned Boot version.
 
 ## docker-compose.yml
