@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: hanzi
       POSTGRES_USER: hanzi
-      POSTGRES_PASSWORD: hanzi
+      POSTGRES_PASSWORD: ${HANZI_DB_PASSWORD:?set HANZI_DB_PASSWORD in .env, see .env.example}
     ports:
       - "5433:5432"   # host 5433: a native PostgreSQL may already use 5432
     volumes:

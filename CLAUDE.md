@@ -37,6 +37,7 @@ The backend is the Gradle project at the repo root; the frontend lives in `front
 ## Commands
 
 ```bash
+cp .env.example .env                 # once; set HANZI_DB_PASSWORD (never commit .env)
 docker compose up -d                 # PostgreSQL on localhost:5433
 ./gradlew bootRun                    # API on http://localhost:8080
 ./gradlew build                      # compile + tests (needs Docker for Testcontainers)

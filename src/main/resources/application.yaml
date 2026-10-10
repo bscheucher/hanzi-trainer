@@ -1,10 +1,11 @@
 spring:
   application:
     name: hanzi-trainer
+  config.import: optional:file:.env[.properties]   # local secrets, shared with docker compose
   datasource:
     url: jdbc:postgresql://localhost:5433/hanzi
     username: hanzi
-    password: hanzi
+    password: ${HANZI_DB_PASSWORD}
   jpa:
     hibernate.ddl-auto: validate
     open-in-view: false
