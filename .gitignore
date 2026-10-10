@@ -38,3 +38,6 @@ out/
 
 ### App data (CC-CEDICT file, uploads) ###
 data/
+
+### Local secrets ###
+.env

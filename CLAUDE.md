@@ -30,14 +30,15 @@ disagree, ask before changing the spec.
   Spring AI (Anthropic + Ollama; use a release compatible with the pinned Boot version), JUnit 5, Testcontainers
 - **Frontend:** Next.js (App Router) + React + TypeScript, Tailwind CSS, Vitest + React Testing Library,
   `hanzi-writer`, HanziLookupJS
-- **Infra:** `docker-compose.yml` with PostgreSQL 16
+- **Infra:** `docker-compose.yml` with PostgreSQL 16 on host port 5433 (5432 is often taken by a native install)
 
 The backend is the Gradle project at the repo root; the frontend lives in `frontend/`.
 
 ## Commands
 
 ```bash
-docker compose up -d                 # PostgreSQL on localhost:5432
+cp .env.example .env                 # once; set HANZI_DB_PASSWORD (never commit .env)
+docker compose up -d                 # PostgreSQL on localhost:5433
 ./gradlew bootRun                    # API on http://localhost:8080
 ./gradlew build                      # compile + tests (needs Docker for Testcontainers)
 cd frontend && npm run dev           # UI on http://localhost:3000

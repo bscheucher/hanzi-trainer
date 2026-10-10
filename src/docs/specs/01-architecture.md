@@ -54,12 +54,17 @@ Browser (Next.js) ──REST/JSON──▶ Spring Boot ──JDBC──▶ Postg
 
 ## Configuration (`application.yaml`)
 
+Secrets (DB password, later the Anthropic API key) live in a git-ignored `.env` file in the repo root.
+Docker Compose reads it automatically; Spring Boot imports it via `spring.config.import`.
+`.env.example` lists the keys.
+
 ```yaml
 spring:
+  config.import: optional:file:.env[.properties]
   datasource:
-    url: jdbc:postgresql://localhost:5432/hanzi
+    url: jdbc:postgresql://localhost:5433/hanzi
     username: hanzi
-    password: hanzi
+    password: ${HANZI_DB_PASSWORD}
   jpa:
     hibernate.ddl-auto: validate
     open-in-view: false
@@ -109,4 +114,4 @@ Model names are configuration, never hard-coded.
 
 ## docker-compose.yml
 
-PostgreSQL 16, database/user/password `hanzi`, port 5432, named volume.
+PostgreSQL 16, database/user `hanzi`, password from `HANZI_DB_PASSWORD` in `.env`, host port 5433 → container 5432, named volume.
