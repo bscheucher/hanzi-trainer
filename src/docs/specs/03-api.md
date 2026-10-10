@@ -116,8 +116,8 @@ CardDto        { id, wordId, cardType, state, due, stability, difficulty, reps, 
 
 Out of scope for v1: editing/deleting textbooks, renaming lessons.
 
-## Admin (dev only)
+## Admin (disable with `hanzi.admin.enabled=false`)
 
 | Method | Path | Response |
 |---|---|---|
-| POST | `/admin/cedict/import` | `{rows, durationMs}` |
+| POST | `/admin/cedict/import` | `{rows, durationMs}` — 503 if the CC-CEDICT file is missing |

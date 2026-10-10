@@ -37,4 +37,6 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Tests import their own small CEDICT samples; never the real file found under ./data.
+    systemProperty 'hanzi.cedict.import-on-startup', 'false'
 }

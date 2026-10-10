@@ -16,3 +16,10 @@ spring:
 
 management:
   endpoints.web.exposure.include: health
+
+hanzi:
+  cedict:
+    file: ./data/cedict/cedict_ts.u8
+    import-on-startup: true
+  admin:
+    enabled: true

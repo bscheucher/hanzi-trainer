@@ -8,3 +8,14 @@ export interface ProblemDetail {
   detail?: string;
   instance?: string;
 }
+
+export interface CedictEntryDto {
+  id: number;
+  simplified: string;
+  traditional: string;
+  /** Tone marks, CEDICT capitalisation kept (`Běijīng`). */
+  pinyin: string;
+  /** Lowercase, `ü` as `v` (`bei3 jing1`). */
+  pinyinNumbered: string;
+  definitions: string[];
+}
