@@ -12,9 +12,10 @@ CandidateDto {
   hanzi, pinyin, pinyinNumbered, meaningEn, meaningDe, partOfSpeech, exampleSentence,
   confidence: number,
   pinyinFromPage: boolean,
-  cedictStatus: 'MATCH' | 'PINYIN_MISMATCH' | 'NOT_FOUND',
+  cedictStatus: 'MATCH' | 'PINYIN_MISMATCH' | 'NOT_FOUND',   // after 一/不 sandhi normalisation (spec 04);
+                                                             // on MATCH, pinyin is the CEDICT reading
   cedictReadings: { pinyin: string, definitions: string[] }[],   // all CEDICT entries for this hanzi
-  existingWordId: number | null, // word with same (hanzi, pinyin) already in vocabulary
+  existingWordId: number | null, // word with same (hanzi, pinyinNumbered) already in vocabulary
   alreadyInLesson: boolean
 }
 ```
@@ -41,25 +42,30 @@ Also show `extraction.warnings` above the table and the extracted sentences / gr
 
 Buttons: **Confirm selected** · **Re-run extraction** · **Discard page**.
 
+Re-running extraction on a confirmed page asks for confirmation, replaces `raw_extraction` and keeps
+`confirmed_at` and all existing words/links; already confirmed words then show `already in lesson`.
+
 ## Confirmation (`POST /api/lessons/{id}/words/confirm`)
 
 In one transaction, per item:
-1. Normalise: trim; `pinyinNumbered = PinyinConverter.toNumbered(pinyin)`; re-derive display pinyin
-   from numbered so formatting is canonical.
-2. Find `word` by `(hanzi, pinyin)`.
+1. Normalise: trim; `pinyinNumbered = PinyinConverter.toNumbered(pinyin, syllableCount(hanzi))`; apply
+   一/不 sandhi normalisation (spec 04); re-derive display pinyin from numbered so formatting is canonical,
+   capitalising its first letter if the input pinyin started with an uppercase letter.
+2. Find `word` by `(hanzi, pinyinNumbered)`.
    - **Exists** → reuse. Fill empty `meaning_de` / `part_of_speech` if provided; never overwrite non-empty fields.
    - **New** → insert. `cedict_entry_id` = matching CEDICT entry if `MATCH`. `verified` = `MATCH || acceptMismatch`.
      Create review cards `RECOGNITION`, `WRITING`, `TONE` (state `NEW`, due now).
 3. Upsert `lesson_word (lesson_id, word_id)` with `source_page_id` and example sentence
    (keep existing example sentence if the new one is null).
 
-Then mark the page as confirmed (add `confirmed_at TIMESTAMPTZ` to `page_image` in migration `V2`).
+Then mark the page as confirmed (`page_image.confirmed_at`).
 
-Validation errors → 400 with per-item messages: empty hanzi, non-CJK hanzi, unparsable pinyin,
-syllable count ≠ character count (allow exceptions: words containing `儿` erhua may have one syllable fewer).
+Validation errors → 400 with per-item messages: empty hanzi, hanzi without CJK characters, unparsable pinyin
+(includes syllable count ≠ `syllableCount(hanzi)`; erhua `儿` counts as the syllable `r5`).
 
 ## Tests
 - Same word confirmed from two pages of the same lesson → one `word`, one `lesson_word`.
 - Same word in two lessons → one `word`, two `lesson_word`, still three cards.
 - `了 le` and `了 liǎo` → two words.
+- `不是 bú shì` from the page → stored as `bu4 shi4` / `bùshì`, `MATCH`.
 - Mismatch without `acceptMismatch` → 400.

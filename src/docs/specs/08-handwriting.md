@@ -13,7 +13,8 @@ Before implementing, verify the current API of both libraries from their README;
 
 ## `<HanziQuiz>` — writing a known word
 
-Props: `{ hanzi: string; onComplete(result: { strokeMistakes: number[]; hintsUsed: number; durationMs: number }) }`
+Props: `{ hanzi: string; onComplete(result: { strokeMistakes: number[]; hintsUsed: number; skipped: boolean; durationMs: number }) }`
+(`durationMs` goes into `AnswerRequest.durationMs`, the rest into the `MEANING_TO_HANZI` response.)
 
 - Renders one Hanzi Writer quiz per character, one after another (current char large, finished chars small).
 - Grid background (田字格: square with diagonal + cross guides) drawn in SVG behind the canvas.
@@ -21,10 +22,11 @@ Props: `{ hanzi: string; onComplete(result: { strokeMistakes: number[]; hintsUse
   (Hanzi Writer's `showHintAfterMisses: 3`).
 - Records `totalMistakes` per character from the quiz's completion callback.
 - After the last character: animate the full word once, then call `onComplete`.
-- Buttons: Hint · Show stroke order (animates current char, counts as hint) · Skip (counts as wrong).
+- Buttons: Hint · Show stroke order (animates current char, counts as hint) · Skip (skips the whole word,
+  reported as `skipped: true`, counts as wrong — spec 07).
 - Size: square, `min(90vw, 320px)`; works with mouse, touch and pen (pointer events; `touch-action: none` on the canvas).
 - If a character has no data (load error), show it with a message "no stroke data for X" and let the user
-  self-assess (correct/wrong buttons).
+  self-assess (correct/wrong buttons), reported as 0 / 4 mistakes for that character.
 
 Also export `<StrokeOrder hanzi>` (animation only) for the vocabulary detail page.
 

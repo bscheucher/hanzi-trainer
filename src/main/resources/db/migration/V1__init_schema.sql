@@ -31,6 +31,7 @@ CREATE TABLE page_image (
     extraction_model   VARCHAR(100),                   -- which LLM produced raw_extraction
     raw_extraction     JSONB,                          -- unreviewed LLM output
     error_message      TEXT,
+    confirmed_at       TIMESTAMPTZ,                    -- set when vocabulary from this page was confirmed
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
@@ -53,15 +54,15 @@ CREATE INDEX idx_cedict_simplified ON cedict_entry (simplified);
 CREATE TABLE word (
     id               BIGSERIAL PRIMARY KEY,
     hanzi            VARCHAR(50)  NOT NULL,
-    pinyin           VARCHAR(200) NOT NULL,     -- tone marks
-    pinyin_numbered  VARCHAR(200) NOT NULL,     -- for search / tone exercises
+    pinyin           VARCHAR(200) NOT NULL,     -- tone marks, display only (may be capitalised: Běijīng)
+    pinyin_numbered  VARCHAR(200) NOT NULL,     -- lowercase, identity / search / tone exercises
     meaning_en       TEXT,
     meaning_de       TEXT,
     part_of_speech   VARCHAR(50),
     cedict_entry_id  BIGINT REFERENCES cedict_entry (id),
     verified         BOOLEAN      NOT NULL DEFAULT FALSE,  -- matched CEDICT or confirmed by you
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    UNIQUE (hanzi, pinyin)                      -- polyphones like 了 le / liǎo stay separate
+    UNIQUE (hanzi, pinyin_numbered)             -- polyphones like 了 le5 / liao3 stay separate
 );
 
 CREATE TABLE lesson_word (
@@ -103,6 +104,7 @@ CREATE TABLE review_card (
         CHECK (card_type IN ('RECOGNITION', 'WRITING', 'TONE')),
     state         VARCHAR(20) NOT NULL DEFAULT 'NEW'
         CHECK (state IN ('NEW', 'LEARNING', 'REVIEW', 'RELEARNING')),
+    step          INT,                         -- FSRS learning/relearning step index; NULL in REVIEW
     stability     DOUBLE PRECISION,
     difficulty    DOUBLE PRECISION,
     due           TIMESTAMPTZ NOT NULL DEFAULT now(),

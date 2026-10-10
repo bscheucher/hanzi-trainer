@@ -28,9 +28,10 @@ Normalise CEDICT pinyin before storing:
 
 - `CedictImporter` triggered by `POST /api/admin/cedict/import` (dev only) and on startup
   if `cedict_entry` is empty and the file exists (log a warning and continue if missing).
-- Batch inserts of 1000 rows (`JdbcTemplate.batchUpdate`), single transaction, truncate first.
-- Idempotent: re-import replaces the table content; `word.cedict_entry_id` links are re-resolved
-  after import by `(simplified, pinyin_numbered)`.
+- Single transaction: `UPDATE word SET cedict_entry_id = NULL`, `DELETE FROM cedict_entry`, batch inserts of
+  1000 rows (`JdbcTemplate.batchUpdate`), then re-link `word.cedict_entry_id` by `(simplified, pinyin_numbered)`.
+  Do **not** `TRUNCATE`: the FK from `word` makes it fail, and `TRUNCATE … CASCADE` would empty `word`.
+- Idempotent: a second run yields the same table content and links.
 - Log row count and duration.
 
 ## Lookup
@@ -39,10 +40,19 @@ Normalise CEDICT pinyin before storing:
 `CedictService.match(String hanzi, String pinyinNumbered)` → `MATCH | PINYIN_MISMATCH | NOT_FOUND`,
 comparing pinyin syllable-by-syllable, case-insensitive, spaces ignored.
 
+- **Tone sandhi:** textbooks print 一 and 不 with sandhi tones (`yí ge`, `bú shì`). When comparing, a syllable
+  for 一 matches `yi1|yi2|yi4` and for 不 matches `bu4|bu2`. On `MATCH`, the CEDICT reading is the canonical
+  pinyin (stored words always use dictionary tones).
+- **Duplicates:** `(simplified, pinyin_numbered)` is not unique (干 `gan1` exists for traditional 乾 and 干).
+  Link the entry with the lowest `id`; show definitions of all matching entries.
+
 ## PinyinConverter (Java, plus a TS twin in `frontend/src/lib/pinyin.ts`)
 
 ### `toToneMarks(String numbered)`
 Input: space-separated syllables with tone digits 1–5, `v` or `u:` for ü.
+Tokens without a trailing tone digit (Latin letters as in `AA制 [A A zhi4]`, `xx`, punctuation such as `,` `·`)
+are passed through unchanged and separated by spaces. `r5` (erhua) is appended without a mark: `dian3 r5` → `diǎnr`.
+Capitalisation of the first letter is preserved (`Bei3 jing1` → `Běijīng`).
 
 Tone-mark placement rule:
 1. If the syllable has `a` or `e`, it takes the mark.
@@ -54,10 +64,19 @@ Output joins syllables of one word **without** spaces (`xue2 xi2` → `xuéxí`)
 multi-syllable words where ambiguity exists (`xi1 an1` → `xī'ān`), insert an apostrophe before a
 syllable starting with `a`, `e` or `o` that is not the first syllable.
 
-### `toNumbered(String marked)` — needed for LLM output
-LLM returns tone-marked pinyin; convert to numbered for storage and comparison.
-Requires syllable segmentation: use a greedy longest-match against the list of valid Mandarin
-syllables (≈410, embed as a resource file), respecting apostrophes. Unmarked syllables get tone 5.
+### `toNumbered(String marked, int syllableCount)` — needed for LLM output
+LLM returns tone-marked pinyin; convert to numbered for storage and comparison. Output is lowercase.
+`syllableCount` = number of CJK characters in the hanzi (each counts one syllable, 儿 included) plus the
+number of Latin-letter runs; the hanzi is always known when this is called.
+
+Segmentation: backtracking search against the list of valid Mandarin syllables (≈410, embed as a resource
+file), plus `r` for a trailing erhua. Rules:
+- An apostrophe always separates syllables.
+- A non-initial syllable may not start with `a`, `e` or `o` unless preceded by an apostrophe
+  (so `xīnán` = `xi1 nan2`, never `xin1 an2`).
+- Accept only segmentations with exactly `syllableCount` syllables; if several remain, prefer longer
+  syllables first. None → `IllegalArgumentException` (reported as "unparsable pinyin").
+- Unmarked syllables get tone 5.
 
 ### `stripTones(String numbered)` → `xue xi` (for search)
 
@@ -77,5 +96,9 @@ syllables (≈410, embed as a resource file), respecting apostrophes. Unmarked s
 | `peng2 you5` | `péngyou` |
 | `er4` | `èr` |
 | `zhuang1` | `zhuāng` |
+| `xi1 nan2` | `xīnán` |
+| `yi1 dian3 r5` | `yīdiǎnr` |
+| `Bei3 jing1` | `Běijīng` |
+| `A A zhi4` | `A A zhì` |
 
-And reverse: `toNumbered` of each marked value returns the numbered value.
+And reverse: `toNumbered` of each marked value returns the numbered value (lowercased: `Běijīng` → `bei3 jing1`).

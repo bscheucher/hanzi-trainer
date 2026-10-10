@@ -16,13 +16,18 @@ Use FSRS (Free Spaced Repetition Scheduler) from the open-spaced-repetition proj
 public interface Scheduler {
     ScheduledCard review(CardSnapshot card, Rating rating, Instant now);
 }
-record CardSnapshot(CardState state, Double stability, Double difficulty, Instant due,
+record CardSnapshot(CardState state, Integer step, Double stability, Double difficulty, Instant due,
                     Instant lastReview, int reps, int lapses) {}
 record ScheduledCard(CardSnapshot card, long elapsedDays, long scheduledDays) {}
 enum Rating { AGAIN(1), HARD(2), GOOD(3), EASY(4) }
 ```
 
 Pure Java, no Spring, no DB — `ReviewService` maps entities to/from snapshots.
+
+`step` (column `review_card.step`) is the index into the learning/relearning steps, as tracked by current
+py-fsrs / ts-fsrs. Verify the upstream card fields when porting; if upstream has fields beyond `CardSnapshot`,
+add them (new migration). If upstream has no `New` state, `NEW` means "never reviewed" (`last_review IS NULL`)
+and is mapped to upstream's initial card.
 
 ## Reference tests
 
@@ -42,18 +47,25 @@ The Java scheduler must reproduce `state`, `stability`, `difficulty` (±1e-4) an
 
 1. `GET /api/reviews/due?limit=30` → cards with `due <= now`, ordered: `LEARNING`/`RELEARNING` first (by due),
    then `REVIEW` (by due), then `NEW` (by `word.created_at`, `lesson_no`).
+   At most one card per word is returned, and cards whose sibling (same word) was rated in the last
+   10 minutes (per `review_log`) are excluded.
    **New-card limit:** at most 15 new cards introduced per local day (configurable via
    `hanzi.review.new-per-day` and `hanzi.review.time-zone`, default Europe/Vienna), counted from `review_log` entries with `state_before = NEW`.
-2. For each card the backend builds an exercise on the fly (not stored):
+2. For each card the backend builds an exercise on the fly (not stored, `ExerciseDto.id = null`):
    - `RECOGNITION` → `HANZI_TO_MEANING`, or a stored `FILL_BLANK` containing the word if one exists (50 %)
    - `TONE` → `TONE`
    - `WRITING` → `MEANING_TO_HANZI`
-   Sibling cards of the same word are not shown in the same session within 10 minutes of each other.
 3. `POST /api/reviews/{cardId}/answer` grades and returns `suggestedRating` (table in spec 07); nothing is saved yet.
+   - With `exerciseId` (stored `FILL_BLANK`): grade against that exercise; 400 if it does not contain the card's word.
+   - Without: grade by card type against the card's word — `RECOGNITION`: `selected == word.meaningEn`;
+     `TONE`: tones from `word.pinyin_numbered`; `WRITING`: `word.hanzi` + stroke-mistake rules (spec 07).
 4. UI shows the result and four rating buttons with the suggested one pre-selected and the next interval
    shown on each button (`<10m`, `1d`, `3d`, ...). Keyboard: `1`–`4`, `Enter` = accept suggestion.
 5. `POST /api/reviews/{cardId}/rate` applies FSRS, updates `review_card`, inserts `review_log`. Idempotency:
    reject a second rating for the same card within 5 s (409).
+
+Session (client side): keep a local queue from `GET /api/reviews/due`; refetch when it is empty; the session
+ends when the server returns no cards. Learning cards that become due later show up in the next session.
 
 To show intervals on buttons, `GET /api/reviews/due` items include
 `previewIntervals: { "1": "PT10M", "2": "P1D", "3": "P3D", "4": "P8D" }` (ISO-8601 durations).

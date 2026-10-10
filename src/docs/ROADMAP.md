@@ -55,7 +55,7 @@ Spec: `specs/06-vocabulary-review.md`
 **Done when**
 - Review screen shows extracted items, each with CEDICT match status (match / pinyin mismatch / not found).
 - User can edit, delete, add items, and confirm.
-- Confirm creates/reuses `word` rows (dedupe on `hanzi + pinyin`), creates `lesson_word` and
+- Confirm creates/reuses `word` rows (dedupe on `hanzi + pinyin_numbered`), creates `lesson_word` and
   `review_card` rows (RECOGNITION, WRITING, TONE) for new words.
 - Confirming twice does not create duplicates.
 
@@ -63,9 +63,12 @@ Spec: `specs/06-vocabulary-review.md`
 
 ## M4 — Vocabulary browser
 
+Spec: `specs/08-handwriting.md` (`<StrokeOrder>` only)
+
 **Done when**
 - `/vocabulary` lists all words with filter by lesson and text search (hanzi, pinyin with or without tones, meaning).
 - Word detail shows lessons it appears in, example sentences, and an animated stroke order (Hanzi Writer, per character).
+- A word can be unlinked from a lesson and deleted.
 
 ---
 

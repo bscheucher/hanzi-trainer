@@ -80,6 +80,7 @@ hanzi:
     provider: anthropic          # anthropic | ollama
     extraction-model: <vision-capable model name>
     exercise-model: <model name>
+  extraction.max-image-px: 1568  # long side; check the provider's image limits for the configured model
   exercises.default-session-size: 15
   review:
     new-per-day: 15
@@ -91,11 +92,20 @@ Model names are configuration, never hard-coded.
 
 ## LLM provider selection
 
-- Exactly one `ChatClient` bean, built from the provider selected by `hanzi.llm.provider`.
+- Two `ChatClient` beans, `extractionChatClient` and `exerciseChatClient`, both built from the provider
+  selected by `hanzi.llm.provider`, with the model set via default chat options from
+  `hanzi.llm.extraction-model` / `hanzi.llm.exercise-model`.
 - Exclude the auto-configuration of the provider that is not used, or use
   `@ConditionalOnProperty` so the app starts without an Anthropic key when using Ollama.
 - If the selected provider is not configured, the app still starts; LLM endpoints return
   `503` with a ProblemDetail explaining which setting is missing.
+
+## Spring Boot 4 notes (verify when adding dependencies in M0)
+
+- Auto-configuration is modular in Boot 4: Flyway needs `spring-boot-starter-flyway` plus
+  `org.flywaydb:flyway-database-postgresql`.
+- Boot 4 uses Jackson 3 (`tools.jackson.*`); check which `JsonNode` Hibernate's JSON mapping expects.
+- Use the Spring AI release line that supports the pinned Boot version.
 
 ## docker-compose.yml
 

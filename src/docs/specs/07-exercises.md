@@ -21,11 +21,14 @@ Grade deterministically wherever possible. Store generated exercises; never send
 ### HANZI_TO_MEANING
 ```jsonc
 prompt:   { "hanzi": "朋友", "options": ["friend", "teacher", "older brother", "classmate"] }
-answer:   { "correctIndex": 0 }
-response: { "selectedIndex": 0 }
+answer:   { "correct": "friend" }
+response: { "selected": "friend" }
 ```
+The correct option is `word.meaningEn` verbatim, so the answer can also be derived from the word alone (spec 09).
 Distractors: 3 meanings of other words, preferring the same lesson and the same part of speech;
 fall back to any confirmed word, then to CEDICT words of the same length. Shuffle options.
+Exclude distractors that are equal to the correct meaning or share a meaning segment with it
+(split on `;` and `,`, trimmed, case-insensitive), e.g. 学 vs 学习 "to learn". All option texts are distinct.
 
 ### TONE
 ```jsonc
@@ -34,14 +37,21 @@ answer:   { "tones": [2, 5] }
 response: { "tones": [2, 5] }
 ```
 UI: one row of buttons 1–4 + "neutral" per syllable; plays nothing in v1 (audio is out of scope).
+Expected tones are the dictionary (citation) tones from `word.pinyin_numbered`; sandhi is not asked.
+Syllables come from `pinyin_numbered`; erhua `r5` and Latin tokens are not asked.
 `score` = share of correct syllables; `correct` only if all correct.
 
 ### MEANING_TO_HANZI
 ```jsonc
 prompt:   { "meaningEn": "friend", "meaningDe": "Freund", "pinyin": "péngyou", "characterCount": 2 }
 answer:   { "hanzi": "朋友" }
-response: { "hanzi": "朋友", "strokeMistakes": [0, 2], "hintsUsed": 1 }
+response: { "hanzi": "朋友", "strokeMistakes": [0, 2], "hintsUsed": 1, "skipped": false }
 ```
+Grading:
+- `skipped: true` (Skip button) → `correct = false`, `score = 0`.
+- A character **fails** if it has > 3 mistakes (the outline was shown, `showHintAfterMisses: 3`).
+  Characters without stroke data are self-assessed and reported as `0` (correct) or `4` (wrong) mistakes.
+- `score` = share of characters that did not fail; `correct` = `score == 1`.
 The client knows the target characters (required by Hanzi Writer) but does not display them until finished.
 Accepting that the answer is technically in the client is fine for a personal learning app.
 
@@ -81,13 +91,16 @@ public interface ExerciseGenerator {
 }
 ```
 
-- **Target words**: the lesson's words (spread across them evenly; least-practised first).
-- **Allowed words**: all words from this lesson and from lessons with a lower `lesson_no` in the same textbook,
-  plus a fixed whitelist of basic function words (`的 了 是 不 很 吗 呢 也 都 和 在 我 你 他 她 们 这 那 个 有`).
+- **Target words**: the lesson's words, spread evenly; words with the fewest stored exercises of the requested
+  type first (count via `exercise_word`).
+- **Allowed words**: all words in the vocabulary **except** those that appear only in lessons of the same textbook
+  with a higher `lesson_no`, plus a fixed whitelist of basic function words
+  (`的 了 是 不 很 吗 呢 也 都 和 在 我 你 他 她 们 这 那 个 有`) and numerals (`一 二 三 四 五 六 七 八 九 十 两 百`).
 - Prompt files in `src/main/resources/prompts/`: `gen-fill-blank.st`, `gen-word-order.st`, `gen-translation.st`,
   `grade-translation.st`.
 - Prompts state: simplified characters only; natural, short sentences (≤ 15 characters for beginners);
-  use only allowed words (list passed in prompt); each sentence must contain at least one target word.
+  use only allowed words (list passed in prompt); each sentence must contain at least one target word;
+  for `FILL_BLANK`, distractor options must not fit the sentence grammatically or semantically.
 
 ### Allowed-character validation (mandatory)
 

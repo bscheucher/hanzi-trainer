@@ -73,7 +73,9 @@ cd frontend && npm test              # Vitest
 - Simplified characters only.
 - Pinyin is stored twice: with tone marks (`xuéxí`) for display and numbered (`xue2 xi2`) for search
   and tone exercises. Neutral tone = `5`. `ü` is written `ü` in display form and `v` in numbered form.
-- A word is identified by `(hanzi, pinyin)`, not by `hanzi` alone (polyphones).
+- Pinyin uses dictionary (citation) tones as in CC-CEDICT. Tone sandhi of 一 / 不 printed in textbooks
+  (`yí ge`, `bú shì`) is normalised to the dictionary reading (`yi1`, `bu4`).
+- A word is identified by `(hanzi, pinyin_numbered)`, not by `hanzi` alone (polyphones).
 
 ## Working agreement for Claude Code
 - Implement one milestone per session. Start by restating the milestone's acceptance criteria.

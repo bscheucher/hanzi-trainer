@@ -45,15 +45,19 @@ PageDto {
 | Method | Path | Body / Query | Response |
 |---|---|---|---|
 | POST | `/lessons/{id}/words/confirm` | `ConfirmRequest` | `ConfirmResult` |
-| GET | `/words` | `lessonId?`, `q?`, `page`, `size` | `Page<WordDto>` |
+| DELETE | `/lessons/{id}/words/{wordId}` | | 204 — unlinks the word from the lesson (word and cards stay) |
+| GET | `/words` | `lessonId?`, `q?`, `page` (0-based), `size` | `Paged<WordDto>` |
 | GET | `/words/{id}` | | `WordDetailDto` |
 | PATCH | `/words/{id}` | `{meaningEn?, meaningDe?, partOfSpeech?}` | `WordDto` |
+| DELETE | `/words/{id}` | | 204 — deletes the word with its cards, logs and lesson links |
 | GET | `/dictionary` | `q` (simplified hanzi, exact match; pinyin search is out of scope for v1) | `CedictEntryDto[]` (max 20) |
 
 ```ts
 WordDto        { id, hanzi, pinyin, pinyinNumbered, meaningEn, meaningDe, partOfSpeech, verified }
 WordDetailDto  { ...WordDto, lessons: {lessonId, lessonNo, textbookTitle, exampleSentence}[],
                  cards: {cardType, state, due}[] }
+Paged<T>       { content: T[], page: { number, size, totalElements, totalPages } }
+               // Spring Data PagedModel: @EnableSpringDataWebSupport(pageSerializationMode = VIA_DTO)
 CedictEntryDto { id, simplified, traditional, pinyin, pinyinNumbered, definitions: string[] }
 ConfirmRequest { sourcePageId?: number, items: ConfirmItem[] }
 ConfirmItem    { hanzi, pinyin, meaningEn, meaningDe?, partOfSpeech?, exampleSentence?,
@@ -76,9 +80,11 @@ ConfirmResult  { created: number, reused: number, linked: number, words: WordDto
 | DELETE | `/exercises/{id}` | | 204 |
 
 ```ts
-ExerciseDto        { id, type, prompt, wordIds: number[] }      // answer NOT included
+ExerciseDto        { id: number | null, type, prompt, wordIds: number[] }   // answer NOT included;
+                                                                 // id null = built on the fly (reviews)
 PracticeSessionDto { exercises: ExerciseDto[] }
-AnswerRequest      { response: unknown, durationMs: number }   // type-specific response shape, see spec 07
+AnswerRequest      { response: unknown, durationMs: number,     // type-specific response shape, see spec 07
+                     exerciseId?: number }                       // reviews only: set when exercise.id != null
 AnswerResult       { correct: boolean, score: number /*0..1*/, expected: unknown,
                      feedback?: string, suggestedRating: 1|2|3|4 }
 GenerationJobDto   { id, status: 'RUNNING'|'DONE'|'FAILED', created: number, rejected: number, error? }
@@ -99,7 +105,7 @@ Generation jobs may be held in memory (map of job id → status) in v1; no table
 ReviewStatsDto { dueNow, dueToday, reviewedToday, newCardsLeftToday,
                  byState: {NEW, LEARNING, REVIEW, RELEARNING},
                  byType: {RECOGNITION, WRITING, TONE} }
-ReviewItemDto  { cardId, cardType, word: WordDto, exercise: ExerciseDto,      // exercise built on the fly
+ReviewItemDto  { cardId, cardType, wordId, exercise: ExerciseDto,   // no WordDto: it would reveal the answer
                  previewIntervals: { "1": string, "2": string, "3": string, "4": string } }  // ISO-8601 durations
 CardDto        { id, wordId, cardType, state, due, stability, difficulty, reps, lapses }
 ```
@@ -107,6 +113,8 @@ CardDto        { id, wordId, cardType, state, due, stability, difficulty, reps, 
 | Method | Path | Query | Response |
 |---|---|---|---|
 | GET | `/reviews/forecast` | `days` (default 30) | `{date, count}[]` |
+
+Out of scope for v1: editing/deleting textbooks, renaming lessons.
 
 ## Admin (dev only)
 

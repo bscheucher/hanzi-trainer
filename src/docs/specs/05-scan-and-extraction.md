@@ -4,8 +4,9 @@
 
 1. `POST /api/lessons/{id}/pages` (multipart).
 2. Validate: content type `image/jpeg`, `image/png` or `image/webp`; ≤ 20 MB. Else 415/413.
-   (HEIC from iPhones: convert in the browser before upload — the `<input capture>` on iOS
-   usually delivers JPEG already; if not, show "please upload JPEG/PNG".)
+   Client side, before upload: draw the image onto a canvas (current browsers apply EXIF orientation
+   when decoding), downscale the long side to `max-image-px`, and export JPEG quality 0.9. This also converts
+   HEIC on Safari; if the browser cannot decode the file, show "please upload JPEG/PNG".
 3. Store original under `data/uploads/lesson-{lessonId}/{uuid}.{ext}`.
 4. Insert `page_image` with `PENDING`, return 202 with `PageDto`.
 5. After commit, publish `PageUploadedEvent`; an `@Async @TransactionalEventListener` runs extraction.
@@ -17,9 +18,9 @@ PENDING → RUNNING → DONE
                   ↘ FAILED (error_message set)
 ```
 
-1. Load image, downscale so the long side ≤ 2000 px (keeps tokens/cost down, enough for Hanzi),
-   re-encode as JPEG quality 90. Use `javax.imageio` / `java.awt` (no extra deps), respect EXIF
-   orientation if feasible (otherwise note it as a known limitation).
+1. Load image; if the long side > `hanzi.extraction.max-image-px`, downscale (safety net for uploads that
+   skipped client-side resizing); re-encode as JPEG quality 90. Use `javax.imageio` / `java.awt`
+   (no extra deps). EXIF orientation is not handled server-side (known limitation; the client fixes it).
 2. Call `VocabularyExtractor.extract(byte[] jpeg) : ExtractionResult`.
 3. Validate result (see below). Store as JSON in `raw_extraction`, set `extraction_model`, `DONE`.
 4. On any exception: `FAILED`, short message in `error_message`, full stack trace in the log.
@@ -84,9 +85,10 @@ Requirements the prompt must state:
 
 Drop (and add a warning for) items where:
 - `hanzi` is empty or contains no CJK characters (U+4E00–U+9FFF, U+3400–U+4DBF).
-- `hanzi` contains Latin letters or digits.
+- `hanzi` contains digits or characters other than CJK and Latin letters. (Mixed words such as
+  `T恤` or `卡拉OK` are kept.)
 
-Deduplicate items within one page on `(hanzi, pinyin)`.
+Deduplicate items within one page on `(hanzi, toNumbered(pinyin))`.
 
 ## Tests
 
