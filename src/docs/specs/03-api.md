@@ -24,10 +24,10 @@ LessonDetailDto   { ...LessonSummaryDto, pages: PageDto[], words: WordDto[] }
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| POST | `/lessons/{id}/pages` | multipart `file`, `pageNo?` | `PageDto` (202) — extraction starts |
+| POST | `/lessons/{id}/pages` | multipart `file`, `pageNo?` | `PageDto` (202) — extraction starts; 415 not JPEG/PNG, 413 > 20 MB, 503 LLM not configured |
 | GET | `/pages/{id}` | | `PageDto` |
 | GET | `/pages/{id}/image` | | image bytes |
-| POST | `/pages/{id}/extract` | | `PageDto` (202) — re-run extraction |
+| POST | `/pages/{id}/extract` | | `PageDto` (202) — re-run extraction; 409 while `RUNNING` |
 | DELETE | `/pages/{id}` | | 204 |
 
 ```ts

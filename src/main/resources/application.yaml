@@ -9,10 +9,19 @@ spring:
   jpa:
     hibernate.ddl-auto: validate
     open-in-view: false
+    # Spring AI brings Jackson 2 along; without this Hibernate would pick it for JSONB columns,
+    # but the entities use Jackson 3 (tools.jackson) JsonNode.
+    properties.hibernate.type.json_format_mapper: jackson3
   servlet.multipart:
     max-file-size: 20MB
     max-request-size: 25MB
   threads.virtual.enabled: true
+  ai:
+    model.chat: ${hanzi.llm.provider}   # only the selected provider's ChatModel is created
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
 
 management:
   endpoints.web.exposure.include: health
@@ -23,3 +32,11 @@ hanzi:
     import-on-startup: true
   admin:
     enabled: true
+  storage:
+    upload-dir: ./data/uploads
+  llm:
+    provider: ${HANZI_LLM_PROVIDER:anthropic}                 # anthropic | ollama
+    extraction-model: ${HANZI_EXTRACTION_MODEL:claude-opus-5-5}
+  extraction:
+    max-image-px: 2576     # Claude's high-resolution limit (long edge); smaller costs fewer image tokens
+    timeout: 120s

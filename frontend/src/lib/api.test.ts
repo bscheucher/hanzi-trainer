@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiFetch } from "./api";
+import { ApiError, apiFetch, uploadPage } from "./api";
 
 function mockFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response);
@@ -35,5 +35,31 @@ describe("apiFetch", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).problem.status).toBe(404);
     expect((error as ApiError).message).toBe("Lesson 42 not found");
+  });
+});
+
+describe("uploadPage", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts multipart with the file and optional page number", async () => {
+    const fetchMock = mockFetch(Response.json({ id: 3, status: "PENDING" }, { status: 202 }));
+
+    await uploadPage(7, new Blob(["x"], { type: "image/jpeg" }), 12);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/lessons/7/pages");
+    expect(init.method).toBe("POST");
+    const form = init.body as FormData;
+    expect(form.get("file")).toBeInstanceOf(Blob);
+    expect(form.get("pageNo")).toBe("12");
+    expect(init.headers).not.toHaveProperty("Content-Type"); // browser sets the multipart boundary
+  });
+
+  it("omits the page number when not given", async () => {
+    const fetchMock = mockFetch(Response.json({ id: 3 }, { status: 202 }));
+
+    await uploadPage(7, new Blob(["x"]));
+
+    expect((fetchMock.mock.calls[0][1].body as FormData).has("pageNo")).toBe(false);
   });
 });

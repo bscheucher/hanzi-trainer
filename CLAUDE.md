@@ -44,6 +44,7 @@ docker compose up -d                 # PostgreSQL on localhost:5433
 ./gradlew build                      # compile + tests (needs Docker for Testcontainers)
 cd frontend && npm run dev           # UI on http://localhost:3000
 cd frontend && npm test              # Vitest
+HANZI_LLM_TEST=true ./gradlew llmTest  # opt-in: real LLM from .env (costs money with Anthropic)
 ```
 
 ## Conventions

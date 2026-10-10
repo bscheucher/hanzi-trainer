@@ -40,7 +40,7 @@ Spec: `specs/05-scan-and-extraction.md`
 
 **Done when**
 - Textbooks and lessons can be created/listed in UI and API.
-- Uploading a JPEG/PNG/WebP image (HEIC converted in the browser) to a lesson stores the file and creates a `page_image` with `PENDING`.
+- Uploading a JPEG/PNG image (HEIC and others converted to JPEG in the browser) to a lesson stores the file and creates a `page_image` with `PENDING`.
 - Extraction runs asynchronously; status goes `PENDING → RUNNING → DONE|FAILED`.
 - `raw_extraction` contains JSON matching the extraction schema.
 - Extraction is behind `VocabularyExtractor` interface; tests use a fake.

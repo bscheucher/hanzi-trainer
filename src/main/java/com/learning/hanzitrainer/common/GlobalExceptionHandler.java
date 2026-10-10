@@ -27,6 +27,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
     }
 
+    @ExceptionHandler(UnsupportedMediaTypeException.class)
+    ProblemDetail handleUnsupportedMediaType(UnsupportedMediaTypeException ex) {
+        return problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported media type", ex.getMessage());
+    }
+
     @ExceptionHandler(ServiceUnavailableException.class)
     ProblemDetail handleServiceUnavailable(ServiceUnavailableException ex) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", ex.getMessage());
