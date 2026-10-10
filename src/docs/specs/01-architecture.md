@@ -57,7 +57,7 @@ Browser (Next.js) ──REST/JSON──▶ Spring Boot ──JDBC──▶ Postg
 ```yaml
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/hanzi
+    url: jdbc:postgresql://localhost:5433/hanzi
     username: hanzi
     password: hanzi
   jpa:
@@ -109,4 +109,4 @@ Model names are configuration, never hard-coded.
 
 ## docker-compose.yml
 
-PostgreSQL 16, database/user/password `hanzi`, port 5432, named volume.
+PostgreSQL 16, database/user/password `hanzi`, host port 5433 → container 5432, named volume.
