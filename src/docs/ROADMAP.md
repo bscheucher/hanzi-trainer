@@ -7,7 +7,8 @@ Each milestone is a self-contained unit for one Claude Code session. Do them in 
 ## M0 — Project skeleton
 
 **Build**
-- Repo layout per `specs/01-architecture.md`: Gradle backend at the repo root, `frontend/`, `docker-compose.yml`.
+- Repo layout per `specs/01-architecture.md`: Gradle backend at the repo root, `docker-compose.yml`;
+  frontend in the separate repo `hanzi-trainer-frontend` (split out after M2).
 - Spring Boot app with Web MVC, Data JPA, Flyway, PostgreSQL driver, Actuator, Validation (add the missing
   starters to `build.gradle`; remove Lombok).
 - `V1__init_schema.sql` (provided) in `src/main/resources/db/migration/`.

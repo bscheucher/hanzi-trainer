@@ -1,13 +1,13 @@
 # 08 — Handwriting input
 
-Two client-side components, both in `frontend/src/components/handwriting/`. No server-side recognition.
+Two client-side components, both in `src/components/handwriting/` of the frontend repo. No server-side recognition.
 
 ## Libraries
 
 | Library | Use | Notes |
 |---|---|---|
 | `hanzi-writer` (npm) | Stroke-order animation and quiz for a **known** target character | Character data (Make Me a Hanzi) loaded per character from CDN by default; configure `charDataLoader` to load from `hanzi-writer-data` on jsDelivr, or self-host later |
-| HanziLookupJS (github.com/gugray/HanziLookupJS) | Recognise a **free-drawn** character, return ranked candidates | Not on npm: vendor the JS + `mmah.json` data into `frontend/public/hanzilookup/`, load lazily on first use; check and respect its license |
+| HanziLookupJS (github.com/gugray/HanziLookupJS) | Recognise a **free-drawn** character, return ranked candidates | Not on npm: vendor the JS + `mmah.json` data into `public/hanzilookup/` (frontend repo), load lazily on first use; check and respect its license |
 
 Before implementing, verify the current API of both libraries from their README; the snippets below are intent, not exact signatures.
 

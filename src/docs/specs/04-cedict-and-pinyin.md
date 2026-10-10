@@ -49,7 +49,7 @@ comparing pinyin syllable-by-syllable, case-insensitive, spaces ignored. Latin l
 - **Duplicates:** `(simplified, pinyin_numbered)` is not unique (干 `gan1` exists for traditional 乾 and 干).
   Link the entry with the lowest `id`; show definitions of all matching entries.
 
-## PinyinConverter (Java, plus a TS twin in `frontend/src/lib/pinyin.ts`)
+## PinyinConverter (Java, plus a TS twin in `src/lib/pinyin.ts` of the frontend repo)
 
 ### `toToneMarks(String numbered)`
 Input: space-separated syllables with tone digits 1–5, `v` or `u:` for ü.
@@ -77,7 +77,8 @@ the `B` of `Běijīng`); each becomes one token and keeps its case. Only pinyin 
 Whitespace, apostrophes (`'` `’`), `-`, `,` and `·` separate chunks; any other non-letter is an error.
 
 Segmentation: backtracking search against the list of valid syllables in `src/main/resources/pinyin/syllables.txt`
-(423 toneless syllables derived from CC-CEDICT readings; the TS twin has a copy and its test fails if they differ),
+(423 toneless syllables derived from CC-CEDICT readings; the TS twin has a copy, and its test fails if they differ
+when the backend repo is checked out next to the frontend repo),
 plus `r` for erhua. Rules:
 - An apostrophe always separates syllables.
 - A non-initial syllable may not start with `a`, `e` or `o` unless preceded by an apostrophe

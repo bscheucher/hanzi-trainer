@@ -2,6 +2,8 @@
 
 ## Repo layout
 
+Two repositories, checked out side by side: this one (backend + all specs) and `hanzi-trainer-frontend`.
+
 ```
 hanzi-trainer/
 ├── CLAUDE.md
@@ -26,8 +28,11 @@ hanzi-trainer/
 │   │   └── review/            # review_card, review_log, FSRS
 │   ├── main/resources/        # application.yaml, db/migration/, prompts/
 │   └── test/
-└── frontend/
-    └── src/
+
+hanzi-trainer-frontend/        # separate repository (github.com/bscheucher/hanzi-trainer-frontend),
+│                              # checked out next to this one; specs stay here
+├── CLAUDE.md, README.md
+└── src/
         ├── app/
         │   ├── lessons/               # list, detail, upload, review extraction
         │   ├── vocabulary/            # browser, word detail
