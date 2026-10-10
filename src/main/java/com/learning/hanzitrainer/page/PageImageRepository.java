@@ -20,6 +20,14 @@ public interface PageImageRepository extends JpaRepository<PageImage, Long> {
     @Query("update PageImage p set p.extractionStatus = :to where p.id = :id and p.extractionStatus = :from")
     int transition(@Param("id") long id, @Param("from") ExtractionStatus from, @Param("to") ExtractionStatus to);
 
+    /** Back to PENDING (error cleared) only if currently in one of {@code from}; returns 0 otherwise. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update PageImage p set p.extractionStatus = :to, p.errorMessage = null
+            where p.id = :id and p.extractionStatus in :from""")
+    int restart(@Param("id") long id, @Param("from") Collection<ExtractionStatus> from,
+                @Param("to") ExtractionStatus to);
+
     @Modifying
     @Query("""
             update PageImage p set p.extractionStatus = :failed, p.errorMessage = :message

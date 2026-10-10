@@ -92,7 +92,8 @@ hanzi:
     exercise-model: <model name>                              # M7
   extraction:
     max-image-px: 2576   # Claude's high-resolution limit (long edge); the client resizes to the same value
-    timeout: 120s        # local models on modest hardware may need more on a cold start
+    timeout: 120s        # per model call; local models on modest hardware may need more on a cold start
+    # max-concurrent: 1  # model calls at once; default 1 for ollama, 2 for anthropic
   exercises.default-session-size: 15
   review:
     new-per-day: 15

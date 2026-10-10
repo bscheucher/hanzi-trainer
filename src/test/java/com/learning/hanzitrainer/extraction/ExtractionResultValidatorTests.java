@@ -47,6 +47,17 @@ class ExtractionResultValidatorTests {
     }
 
     @Test
+    void keepsTransliteratedNamesAndLingZero() {
+        ExtractionResult result = validate(word("马克·吐温", "Mǎkè·Tǔwēn", "Mark Twain", null, 0.9),
+                word("二〇二六", "èr líng èr liù", "2026", null, 0.9));
+
+        assertThat(result.words()).extracting(ExtractedWord::hanzi).containsExactly("马克·吐温", "二〇二六");
+        assertThat(result.warnings()).isEmpty();
+        assertThat(ExtractionResultValidator.syllableCount("马克·吐温")).isEqualTo(4);
+        assertThat(ExtractionResultValidator.syllableCount("二〇二六")).isEqualTo(4);
+    }
+
+    @Test
     void deduplicatesOnHanziAndNumberedPinyin() {
         ExtractionResult result = validate(
                 word("朋友", "péngyou", "friend", null, 0.9),

@@ -36,11 +36,20 @@ public record HanziProperties(
     }
 
     /**
-     * @param maxImagePx long side of the image sent to the model
-     * @param timeout    per page, including the model call
+     * @param maxImagePx    long side of the image sent to the model
+     * @param timeout       per model call; time spent waiting for a free slot does not count
+     * @param maxConcurrent model calls running at once; null = 1 for ollama, 2 for anthropic
      */
     public record Extraction(
             @DefaultValue("2576") int maxImagePx,
-            @DefaultValue("120s") Duration timeout) {
+            @DefaultValue("120s") Duration timeout,
+            Integer maxConcurrent) {
+
+        public int effectiveMaxConcurrent(String provider) {
+            if (maxConcurrent != null) {
+                return Math.max(1, maxConcurrent);
+            }
+            return "ollama".equals(provider) ? 1 : 2;
+        }
     }
 }

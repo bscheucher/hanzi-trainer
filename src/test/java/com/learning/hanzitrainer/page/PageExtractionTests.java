@@ -30,13 +30,16 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /** Upload → async extraction → stored result, against PostgreSQL with a fake extractor. */
-@SpringBootTest(properties = "hanzi.extraction.timeout=2s")
+@SpringBootTest(properties = {"hanzi.extraction.timeout=2s", "hanzi.extraction.max-concurrent=1"})
 @Import({TestcontainersConfiguration.class, FakeExtractorConfiguration.class})
 class PageExtractionTests {
 
@@ -149,6 +152,61 @@ class PageExtractionTests {
                 ExtractionStatus.FAILED);
 
         assertThat(failed.errorMessage()).isEqualTo("Extraction timed out after 2 s");
+    }
+
+    @Test
+    void timedOutCallIsInterrupted() {
+        AtomicBoolean interrupted = new AtomicBoolean();
+        extractor.willAnswer(image -> {
+            try {
+                Thread.sleep(Duration.ofSeconds(10));
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+            }
+            return FakeVocabularyExtractor.SAMPLE;
+        });
+
+        awaitStatus(pageService.upload(lessonId, TestImages.png(50, 50), null).id(), ExtractionStatus.FAILED);
+
+        await().atMost(Duration.ofSeconds(2)).untilTrue(interrupted);
+    }
+
+    @Test
+    void modelCallsAreThrottledAndQueueTimeDoesNotCountTowardsTimeout() {
+        AtomicInteger running = new AtomicInteger();
+        AtomicInteger maxRunning = new AtomicInteger();
+        extractor.willAnswer(image -> {
+            maxRunning.accumulateAndGet(running.incrementAndGet(), Math::max);
+            sleep(Duration.ofMillis(800));
+            running.decrementAndGet();
+            return FakeVocabularyExtractor.SAMPLE;
+        });
+
+        // 4 × 0.8 s queued behind one slot = 3.2 s, longer than the 2 s timeout per call
+        List<Long> ids = IntStream.rangeClosed(1, 4)
+                .mapToObj(i -> pageService.upload(lessonId, TestImages.png(50, 50), i).id()).toList();
+
+        ids.forEach(id -> awaitStatus(id, ExtractionStatus.DONE));
+        assertThat(maxRunning).hasValue(1);
+    }
+
+    @Test
+    void rerunOfQueuedPageDoesNotStartASecondRun() {
+        CountDownLatch release = new CountDownLatch(1);
+        extractor.willAnswer(image -> {
+            awaitLatch(release);
+            return FakeVocabularyExtractor.SAMPLE;
+        });
+        long first = pageService.upload(lessonId, TestImages.png(50, 50), 1).id();
+        awaitStatus(first, ExtractionStatus.RUNNING);
+        long queued = pageService.upload(lessonId, TestImages.png(50, 50), 2).id(); // waits for the only slot
+
+        assertThat(pageService.rerun(queued).status()).isEqualTo(ExtractionStatus.PENDING);
+
+        release.countDown();
+        awaitStatus(first, ExtractionStatus.DONE);
+        awaitStatus(queued, ExtractionStatus.DONE);
+        assertThat(extractor.calls()).isEqualTo(2);
     }
 
     @Test

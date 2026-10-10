@@ -44,6 +44,33 @@ describe("LessonPages", () => {
     expect(api.getPage).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps polling the other pages when one fails, and drops pages deleted elsewhere", async () => {
+    vi.mocked(api.getPage).mockImplementation(async (id) => {
+      if (id === 1) throw new api.ApiError({ status: 404, detail: "Page 1 not found" });
+      if (id === 2) throw new TypeError("fetch failed");
+      return page({ id, pageNo: id, status: "DONE", extraction: EXTRACTION });
+    });
+    render(
+      <LessonPages
+        lessonId={7}
+        initialPages={[page({ id: 1, pageNo: 1 }), page({ id: 2, pageNo: 2 }), page({ id: 3, pageNo: 3 })]}
+      />,
+    );
+
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS));
+
+    expect(screen.queryByRole("listitem", { name: "Page 1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "Page 3" })).toHaveTextContent("Done");
+    expect(screen.getByRole("listitem", { name: "Page 2" })).toHaveTextContent("Waiting");
+    expect(screen.getByText("Cannot reach the backend. Is it running?")).toBeInTheDocument();
+
+    vi.mocked(api.getPage).mockResolvedValue(page({ id: 2, pageNo: 2, status: "DONE", extraction: EXTRACTION }));
+    await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS));
+
+    expect(screen.getByRole("listitem", { name: "Page 2" })).toHaveTextContent("Done");
+    expect(screen.queryByText("Cannot reach the backend. Is it running?")).not.toBeInTheDocument();
+  });
+
   it("does not poll when every page is finished", async () => {
     render(<LessonPages lessonId={7} initialPages={[page({ status: "DONE", extraction: EXTRACTION })]} />);
 

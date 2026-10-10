@@ -25,12 +25,16 @@ PENDING → RUNNING → DONE
 2. Call `VocabularyExtractor.extract(byte[] jpeg) : ExtractionResult`.
 3. Validate result (see below). Store as JSON in `raw_extraction`, set `extraction_model`, `DONE`.
 4. On any exception: `FAILED`, short message in `error_message`, full stack trace in the log.
-5. Timeout: 120 s per page.
+5. Timeout: 120 s per model call. At most `hanzi.extraction.max-concurrent` calls run at once (default 1 for
+   Ollama, 2 for Anthropic); a page waits as `PENDING` for a free slot, and waiting does not count towards its
+   timeout. On timeout the call is interrupted; the HTTP clients' own timeouts (`spring.ai.anthropic.timeout`,
+   `spring.http.clients.read-timeout`) are the backstop, and Spring AI retries are limited to 2 attempts.
 
 On startup (before the web server accepts uploads), pages left `PENDING` or `RUNNING` are set to `FAILED`
 ("Interrupted by restart"): jobs live only in memory, so nothing would ever finish them.
-Re-running extraction (`POST /pages/{id}/extract`) is allowed in any state except `RUNNING` (409) and keeps the
-previous `raw_extraction` until the new run succeeds.
+Re-running extraction (`POST /pages/{id}/extract`) atomically moves a `DONE` or `FAILED` page back to `PENDING`;
+on a `PENDING` page (job already queued) it does nothing, on `RUNNING` it is a 409. The previous `raw_extraction`
+is kept until the new run succeeds.
 
 ## Interface
 
@@ -93,8 +97,8 @@ Requirements the prompt must state:
 
 Drop (and add a warning for) items where:
 - `hanzi` is empty or contains no CJK characters (U+4E00–U+9FFF, U+3400–U+4DBF).
-- `hanzi` contains digits or characters other than CJK and Latin letters. (Mixed words such as
-  `T恤` or `卡拉OK` are kept.)
+- `hanzi` contains digits or characters other than CJK (incl. `〇`), Latin letters and the name separator `·`.
+  (Mixed words such as `T恤`, `卡拉OK` and transliterated names such as `马克·吐温` are kept.)
 
 Deduplicate items within one page on `(hanzi, toNumbered(pinyin))`.
 

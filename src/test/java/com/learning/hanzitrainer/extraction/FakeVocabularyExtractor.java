@@ -20,9 +20,11 @@ public class FakeVocabularyExtractor implements VocabularyExtractor {
 
     private volatile Function<byte[], ExtractionResult> behaviour = image -> SAMPLE;
     private volatile byte[] lastImage;
+    private final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
 
     @Override
     public ExtractionResult extract(byte[] jpegImage) {
+        calls.incrementAndGet();
         lastImage = jpegImage;
         return behaviour.apply(jpegImage);
     }
@@ -43,6 +45,11 @@ public class FakeVocabularyExtractor implements VocabularyExtractor {
     public void reset() {
         behaviour = image -> SAMPLE;
         lastImage = null;
+        calls.set(0);
+    }
+
+    public int calls() {
+        return calls.get();
     }
 
     public byte[] lastImage() {

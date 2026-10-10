@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.List;
+
 /** Upload, re-extraction and deletion of page images (spec 05, "Upload flow"). */
 @Service
 @Transactional
@@ -59,16 +61,22 @@ public class PageService {
         return new StoredImage(storage.read(page.getStoragePath()), page.getMimeType());
     }
 
-    /** Keeps the previous result until the new one is stored; confirmed words and links are untouched. */
+    /**
+     * Atomically moves a DONE or FAILED page back to PENDING and starts a new run. A PENDING page already has a
+     * job queued, so nothing happens; RUNNING is a conflict. Keeps the previous result until the new one is
+     * stored; confirmed words and links are untouched.
+     */
     public PageDto rerun(long pageId) {
+        find(pageId);
+        requireExtractor();
+        int restarted = pages.restart(pageId, List.of(ExtractionStatus.DONE, ExtractionStatus.FAILED),
+                ExtractionStatus.PENDING);
         PageImage page = find(pageId);
-        if (page.getExtractionStatus() == ExtractionStatus.RUNNING) {
+        if (restarted == 1) {
+            events.publishEvent(new PageUploadedEvent(pageId));
+        } else if (page.getExtractionStatus() == ExtractionStatus.RUNNING) {
             throw new ConflictException("Extraction of page " + pageId + " is already running");
         }
-        requireExtractor();
-        page.setExtractionStatus(ExtractionStatus.PENDING);
-        page.setErrorMessage(null);
-        events.publishEvent(new PageUploadedEvent(pageId));
         return mapper.toDto(page);
     }
 

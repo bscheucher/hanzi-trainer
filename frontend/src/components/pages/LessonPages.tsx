@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deletePage, getPage, rerunExtraction } from "@/lib/api";
+import { ApiError, deletePage, getPage, rerunExtraction } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import type { PageDto } from "@/lib/types";
 import PageCard from "./PageCard";
@@ -21,12 +21,20 @@ export default function LessonPages({ lessonId, initialPages }: { lessonId: numb
     if (!polling) return;
     const timer = setInterval(async () => {
       const unfinished = pages.filter(isUnfinished);
-      try {
-        const updates = await Promise.all(unfinished.map((p) => getPage(p.id)));
-        setPages((current) => current.map((p) => updates.find((u) => u.id === p.id) ?? p));
-      } catch (e) {
-        setError(errorMessage(e));
-      }
+      // allSettled: one failing page must not discard the updates of the others
+      const results = await Promise.allSettled(unfinished.map((p) => getPage(p.id)));
+      const updates: PageDto[] = [];
+      const gone = new Set<number>();
+      let failure: unknown = null;
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") updates.push(result.value);
+        else if (result.reason instanceof ApiError && result.reason.problem.status === 404) gone.add(unfinished[i].id);
+        else failure = result.reason;
+      });
+      setPages((current) =>
+        current.filter((p) => !gone.has(p.id)).map((p) => updates.find((u) => u.id === p.id) ?? p),
+      );
+      setError(failure === null ? null : errorMessage(failure));
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [polling, pages]);

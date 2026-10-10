@@ -13,21 +13,26 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Runs extraction for one page: PENDING → RUNNING → DONE | FAILED (spec 05, "Extraction job"). */
+/**
+ * Runs extraction for one page: PENDING → RUNNING → DONE | FAILED (spec 05, "Extraction job").
+ * At most {@code hanzi.extraction.max-concurrent} model calls run at once; a page waits as PENDING for a slot,
+ * and its timeout only starts when its own call starts.
+ */
 @Component
 public class ExtractionJob {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionJob.class);
     private static final int MAX_ERROR_LENGTH = 500;
-    private static final Executor MODEL_CALLS = Executors.newVirtualThreadPerTaskExecutor();
+    /** ExecutorService futures interrupt the call on cancel(true), unlike CompletableFuture. */
+    private static final ExecutorService MODEL_CALLS = Executors.newVirtualThreadPerTaskExecutor();
 
     private final PageImageRepository pages;
     private final FileStorage storage;
@@ -35,6 +40,7 @@ public class ExtractionJob {
     private final PageMapper mapper;
     private final HanziProperties properties;
     private final TransactionTemplate tx;
+    private final Semaphore modelSlots;
 
     public ExtractionJob(PageImageRepository pages, FileStorage storage, VocabularyExtractor extractor,
                          PageMapper mapper, HanziProperties properties, TransactionTemplate tx) {
@@ -44,6 +50,8 @@ public class ExtractionJob {
         this.mapper = mapper;
         this.properties = properties;
         this.tx = tx;
+        this.modelSlots = new Semaphore(
+                properties.extraction().effectiveMaxConcurrent(properties.llm().provider()), true);
     }
 
     @Async
@@ -53,6 +61,20 @@ public class ExtractionJob {
     }
 
     void run(long pageId) {
+        try {
+            modelSlots.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        try {
+            extract(pageId);
+        } finally {
+            modelSlots.release();
+        }
+    }
+
+    private void extract(long pageId) {
         Integer claimed = tx.execute(s -> pages.transition(pageId, ExtractionStatus.PENDING, ExtractionStatus.RUNNING));
         if (claimed == null || claimed == 0) {
             return; // deleted meanwhile, or another run picked it up
@@ -77,11 +99,11 @@ public class ExtractionJob {
     }
 
     private ExtractionResult callModel(byte[] jpeg) throws Exception {
-        Future<ExtractionResult> call = CompletableFuture.supplyAsync(() -> extractor.extract(jpeg), MODEL_CALLS);
+        Future<ExtractionResult> call = MODEL_CALLS.submit(() -> extractor.extract(jpeg));
         try {
             return call.get(properties.extraction().timeout().toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            call.cancel(true);
+            call.cancel(true); // interrupts the call; the HTTP clients' own timeouts are the backstop
             throw e;
         } catch (ExecutionException e) {
             throw e.getCause() instanceof Exception cause ? cause : e;

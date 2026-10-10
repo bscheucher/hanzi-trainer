@@ -17,6 +17,9 @@ import java.util.Set;
  */
 public final class ExtractionResultValidator {
 
+    /** Middle dots in transliterated names (马克·吐温); not counted as syllables. */
+    private static final String NAME_SEPARATORS = "·・";
+
     private ExtractionResultValidator() {
     }
 
@@ -62,7 +65,7 @@ public final class ExtractionResultValidator {
             i += Character.charCount(cp);
             if (isCjk(cp)) {
                 hasCjk = true;
-            } else if (!(cp < 128 && Character.isLetter(cp))) {
+            } else if (!(cp < 128 && Character.isLetter(cp)) && NAME_SEPARATORS.indexOf(cp) < 0) {
                 return "contains '" + Character.toString(cp) + "'";
             }
         }
@@ -83,7 +86,7 @@ public final class ExtractionResultValidator {
     }
 
     private static boolean isCjk(int cp) {
-        return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF);
+        return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) || cp == 0x3007; // 〇 líng
     }
 
     private static List<String> clean(List<String> values) {

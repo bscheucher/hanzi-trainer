@@ -1,14 +1,17 @@
 package com.learning.hanzitrainer.page;
 
 import com.learning.hanzitrainer.TestImages;
+import com.learning.hanzitrainer.common.ConflictException;
 import com.learning.hanzitrainer.common.NotFoundException;
 import com.learning.hanzitrainer.common.ServiceUnavailableException;
+import com.learning.hanzitrainer.extraction.FakeVocabularyExtractor;
 import com.learning.hanzitrainer.extraction.UnavailableVocabularyExtractor;
 import com.learning.hanzitrainer.textbook.Lesson;
 import com.learning.hanzitrainer.textbook.LessonRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,6 +49,47 @@ class PageServiceTests {
         when(pages.findById(5L)).thenReturn(Optional.of(page));
 
         assertThatThrownBy(() -> service.rerun(5)).isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    @Test
+    void rerunOfRunningPageIsConflictWithoutNewEvent() {
+        PageService available = serviceWithWorkingExtractor();
+        PageImage page = new PageImage(mock(Lesson.class), 1, "lesson-1/a.png", "image/png");
+        page.setExtractionStatus(ExtractionStatus.RUNNING);
+        when(pages.findById(5L)).thenReturn(Optional.of(page));
+        when(pages.restart(anyLong(), any(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> available.rerun(5)).isInstanceOf(ConflictException.class);
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void rerunOfPendingPageIsANoOp() {
+        PageService available = serviceWithWorkingExtractor();
+        PageImage page = new PageImage(mock(Lesson.class), 1, "lesson-1/a.png", "image/png");
+        when(pages.findById(5L)).thenReturn(Optional.of(page)); // PENDING by default
+        when(pages.restart(anyLong(), any(), any())).thenReturn(0);
+
+        available.rerun(5);
+
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void rerunOfFinishedPagePublishesOneEvent() {
+        PageService available = serviceWithWorkingExtractor();
+        PageImage page = new PageImage(mock(Lesson.class), 1, "lesson-1/a.png", "image/png");
+        when(pages.findById(5L)).thenReturn(Optional.of(page));
+        when(pages.restart(5L, List.of(ExtractionStatus.DONE, ExtractionStatus.FAILED), ExtractionStatus.PENDING))
+                .thenReturn(1);
+
+        available.rerun(5);
+
+        verify(events).publishEvent(new PageUploadedEvent(5));
+    }
+
+    private PageService serviceWithWorkingExtractor() {
+        return new PageService(pages, lessons, storage, new FakeVocabularyExtractor(), mock(PageMapper.class), events);
     }
 
     @Test
