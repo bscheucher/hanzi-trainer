@@ -35,7 +35,7 @@ Normalise CEDICT pinyin before storing:
 
 ## Lookup
 
-`CedictService.lookup(String hanzi)` → all entries with that simplified form.
+`CedictService.lookup(String hanzi)` → all entries with that simplified form (backs `GET /api/dictionary`).
 `CedictService.match(String hanzi, String pinyinNumbered)` → `MATCH | PINYIN_MISMATCH | NOT_FOUND`,
 comparing pinyin syllable-by-syllable, case-insensitive, spaces ignored.
 

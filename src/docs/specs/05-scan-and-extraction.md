@@ -92,4 +92,4 @@ Deduplicate items within one page on `(hanzi, pinyin)`.
 
 - `FakeVocabularyExtractor` returning a fixed `ExtractionResult` for service/integration tests.
 - One opt-in test (`@EnabledIfEnvironmentVariable(named = "ANTHROPIC_API_KEY", ...)`, tagged `llm`,
-  excluded from `verify`) that sends `src/test/resources/sample-page.jpg` to the real model.
+  excluded from `./gradlew build` via `excludeTags 'llm'`) that sends `src/test/resources/sample-page.jpg` to the real model.

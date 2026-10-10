@@ -6,24 +6,26 @@
 hanzi-trainer/
 ├── CLAUDE.md
 ├── docker-compose.yml
-├── docs/
-│   ├── ROADMAP.md
-│   └── specs/
+├── build.gradle, settings.gradle, gradlew   # backend = Gradle project at the repo root
 ├── data/                      # git-ignored: cedict file, uploaded images
 │   ├── cedict/cedict_ts.u8
 │   └── uploads/
-├── backend/
-│   ├── pom.xml
-│   └── src/main/java/com/example/hanzi/
-│       ├── HanziApplication.java
-│       ├── common/            # exception handler, config, JSON utils
-│       ├── textbook/          # textbook + lesson
-│       ├── page/              # page_image, file storage
-│       ├── extraction/        # VocabularyExtractor + Spring AI impl
-│       ├── cedict/            # import, lookup, PinyinConverter
-│       ├── word/              # word, lesson_word, confirmation
-│       ├── exercise/          # generation, grading, ExerciseGenerator + LLM impl
-│       └── review/            # review_card, review_log, FSRS
+├── src/
+│   ├── docs/
+│   │   ├── ROADMAP.md
+│   │   └── specs/
+│   ├── main/java/com/learning/hanzitrainer/
+│   │   ├── HanziTrainerApplication.java
+│   │   ├── common/            # exception handler, config, JSON utils
+│   │   ├── textbook/          # textbook + lesson
+│   │   ├── page/              # page_image, file storage
+│   │   ├── extraction/        # VocabularyExtractor + Spring AI impl
+│   │   ├── cedict/            # import, lookup, PinyinConverter
+│   │   ├── word/              # word, lesson_word, confirmation
+│   │   ├── exercise/          # generation, grading, ExerciseGenerator + LLM impl
+│   │   └── review/            # review_card, review_log, FSRS
+│   ├── main/resources/        # application.yaml, db/migration/, prompts/
+│   └── test/
 └── frontend/
     └── src/
         ├── app/
@@ -50,7 +52,7 @@ Browser (Next.js) ──REST/JSON──▶ Spring Boot ──JDBC──▶ Postg
 - Long-running work (extraction, LLM exercise generation) runs on a virtual-thread executor
   (`spring.threads.virtual.enabled=true` + `@Async`). Client polls status.
 
-## Configuration (`application.yml`)
+## Configuration (`application.yaml`)
 
 ```yaml
 spring:
@@ -72,13 +74,16 @@ spring:
       base-url: http://localhost:11434
 
 hanzi:
-  storage.upload-dir: ../data/uploads
-  cedict.file: ../data/cedict/cedict_ts.u8
+  storage.upload-dir: ./data/uploads
+  cedict.file: ./data/cedict/cedict_ts.u8
   llm:
     provider: anthropic          # anthropic | ollama
     extraction-model: <vision-capable model name>
     exercise-model: <model name>
   exercises.default-session-size: 15
+  review:
+    new-per-day: 15
+    time-zone: Europe/Vienna
 ```
 
 `hanzi.*` is bound to a `@ConfigurationProperties` record `HanziProperties`.

@@ -7,15 +7,16 @@ Each milestone is a self-contained unit for one Claude Code session. Do them in 
 ## M0 — Project skeleton
 
 **Build**
-- Repo layout per `specs/01-architecture.md`: `backend/`, `frontend/`, `docker-compose.yml`, `docs/`.
-- Spring Boot app with Web, Data JPA, Flyway, PostgreSQL driver, Actuator, Validation.
-- `V1__init_schema.sql` (provided) in `backend/src/main/resources/db/migration/`.
+- Repo layout per `specs/01-architecture.md`: Gradle backend at the repo root, `frontend/`, `docker-compose.yml`.
+- Spring Boot app with Web MVC, Data JPA, Flyway, PostgreSQL driver, Actuator, Validation (add the missing
+  starters to `build.gradle`; remove Lombok).
+- `V1__init_schema.sql` (provided) in `src/main/resources/db/migration/`.
 - JPA entities for all tables in `specs/02-data-model.md` (no services yet).
 - Next.js app with Tailwind, a layout with nav: *Lessons · Vocabulary · Review*.
 - Global `ProblemDetail` exception handler.
 
 **Done when**
-- `docker compose up -d && ./mvnw spring-boot:run` starts, Flyway applies V1, `ddl-auto=validate` passes.
+- `docker compose up -d && ./gradlew bootRun` starts, Flyway applies V1, `ddl-auto=validate` passes.
 - `GET /actuator/health` → `UP`.
 - A Testcontainers test boots the context against PostgreSQL.
 - `npm run dev` shows the layout with three empty pages.
@@ -39,7 +40,7 @@ Spec: `specs/05-scan-and-extraction.md`
 
 **Done when**
 - Textbooks and lessons can be created/listed in UI and API.
-- Uploading a JPEG/PNG/HEIC-converted image to a lesson stores the file and creates a `page_image` with `PENDING`.
+- Uploading a JPEG/PNG/WebP image (HEIC converted in the browser) to a lesson stores the file and creates a `page_image` with `PENDING`.
 - Extraction runs asynchronously; status goes `PENDING → RUNNING → DONE|FAILED`.
 - `raw_extraction` contains JSON matching the extraction schema.
 - Extraction is behind `VocabularyExtractor` interface; tests use a fake.
@@ -108,4 +109,4 @@ Spec: `specs/09-spaced-repetition.md`
 - `/review` shows due count and runs a session across all lessons.
 - Each answer produces a suggested rating the user can override; FSRS updates the card and writes `review_log`.
 - FSRS implementation passes the reference test cases in the spec.
-- Dashboard: due today, reviewed today, words per state.
+- Dashboard: due now, due today, reviewed today, new cards left today, cards per state and per card type.

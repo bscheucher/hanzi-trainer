@@ -48,7 +48,7 @@ PageDto {
 | GET | `/words` | `lessonId?`, `q?`, `page`, `size` | `Page<WordDto>` |
 | GET | `/words/{id}` | | `WordDetailDto` |
 | PATCH | `/words/{id}` | `{meaningEn?, meaningDe?, partOfSpeech?}` | `WordDto` |
-| GET | `/dictionary` | `q` (hanzi or pinyin) | `CedictEntryDto[]` (max 20) |
+| GET | `/dictionary` | `q` (simplified hanzi, exact match; pinyin search is out of scope for v1) | `CedictEntryDto[]` (max 20) |
 
 ```ts
 WordDto        { id, hanzi, pinyin, pinyinNumbered, meaningEn, meaningDe, partOfSpeech, verified }
@@ -78,7 +78,7 @@ ConfirmResult  { created: number, reused: number, linked: number, words: WordDto
 ```ts
 ExerciseDto        { id, type, prompt, wordIds: number[] }      // answer NOT included
 PracticeSessionDto { exercises: ExerciseDto[] }
-AnswerRequest      { response: unknown, durationMs: number, strokeMistakes?: number[] }
+AnswerRequest      { response: unknown, durationMs: number }   // type-specific response shape, see spec 07
 AnswerResult       { correct: boolean, score: number /*0..1*/, expected: unknown,
                      feedback?: string, suggestedRating: 1|2|3|4 }
 GenerationJobDto   { id, status: 'RUNNING'|'DONE'|'FAILED', created: number, rejected: number, error? }
@@ -96,7 +96,9 @@ Generation jobs may be held in memory (map of job id → status) in v1; no table
 | POST | `/reviews/{cardId}/rate` | `{rating: 1..4}` | `CardDto` |
 
 ```ts
-ReviewStatsDto { dueNow, dueToday, reviewedToday, byState: {NEW, LEARNING, REVIEW, RELEARNING} }
+ReviewStatsDto { dueNow, dueToday, reviewedToday, newCardsLeftToday,
+                 byState: {NEW, LEARNING, REVIEW, RELEARNING},
+                 byType: {RECOGNITION, WRITING, TONE} }
 ReviewItemDto  { cardId, cardType, word: WordDto, exercise: ExerciseDto,      // exercise built on the fly
                  previewIntervals: { "1": string, "2": string, "3": string, "4": string } }  // ISO-8601 durations
 CardDto        { id, wordId, cardType, state, due, stability, difficulty, reps, lapses }

@@ -1,6 +1,6 @@
 # 02 — Data model
 
-The schema is defined in `backend/src/main/resources/db/migration/V1__init_schema.sql`.
+The schema is defined in `src/main/resources/db/migration/V1__init_schema.sql`.
 This file explains intent and invariants. Changes go into new migrations.
 
 ## Entities

@@ -42,8 +42,8 @@ The Java scheduler must reproduce `state`, `stability`, `difficulty` (±1e-4) an
 
 1. `GET /api/reviews/due?limit=30` → cards with `due <= now`, ordered: `LEARNING`/`RELEARNING` first (by due),
    then `REVIEW` (by due), then `NEW` (by `word.created_at`, `lesson_no`).
-   **New-card limit:** at most 15 new cards introduced per local day (Europe/Vienna; configurable
-   `hanzi.review.new-per-day`), counted from `review_log` entries with `state_before = NEW`.
+   **New-card limit:** at most 15 new cards introduced per local day (configurable via
+   `hanzi.review.new-per-day` and `hanzi.review.time-zone`, default Europe/Vienna), counted from `review_log` entries with `state_before = NEW`.
 2. For each card the backend builds an exercise on the fly (not stored):
    - `RECOGNITION` → `HANZI_TO_MEANING`, or a stored `FILL_BLANK` containing the word if one exists (50 %)
    - `TONE` → `TONE`
