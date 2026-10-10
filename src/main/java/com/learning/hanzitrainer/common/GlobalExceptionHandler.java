@@ -27,6 +27,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidItemsException.class)
+    ProblemDetail handleInvalidItems(InvalidItemsException ex) {
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Invalid items", ex.getMessage());
+        problem.setProperty("errors", ex.errors());
+        return problem;
+    }
+
     @ExceptionHandler(UnsupportedMediaTypeException.class)
     ProblemDetail handleUnsupportedMediaType(UnsupportedMediaTypeException ex) {
         return problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported media type", ex.getMessage());

@@ -52,7 +52,7 @@ public class PageService {
 
     @Transactional(readOnly = true)
     public PageDto get(long pageId) {
-        return mapper.toDto(find(pageId));
+        return mapper.toDetailDto(find(pageId));
     }
 
     @Transactional(readOnly = true)

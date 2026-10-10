@@ -59,6 +59,20 @@ class CedictControllerTests {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void checkReturnsNormalisedReading() throws Exception {
+        when(cedictService.check("不是", "bú shì")).thenReturn(new CedictService.ReadingCheck("bùshì", "bu4 shi4",
+                CedictMatch.Status.MATCH, null, List.of(entry(1, "不是", "bu4 shi4")), null));
+
+        mockMvc.perform(get("/api/dictionary/check").param("hanzi", "不是").param("pinyin", "bú shì"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pinyin").value("bùshì"))
+                .andExpect(jsonPath("$.pinyinNumbered").value("bu4 shi4"))
+                .andExpect(jsonPath("$.cedictStatus").value("MATCH"))
+                .andExpect(jsonPath("$.cedictReadings[0].pinyinNumbered").value("bu4 shi4"))
+                .andExpect(jsonPath("$.error").doesNotExist());
+    }
+
     private static CedictEntry entry(long id, String simplified, String pinyinNumbered) {
         CedictEntry e = new CedictEntry(simplified, "學習", pinyinNumbered,
                 PinyinConverter.toToneMarks(pinyinNumbered), List.of("to learn", "to study"));

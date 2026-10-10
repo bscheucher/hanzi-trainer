@@ -14,7 +14,8 @@ CandidateDto {
   pinyinFromPage: boolean,
   cedictStatus: 'MATCH' | 'PINYIN_MISMATCH' | 'NOT_FOUND',   // after 一/不 sandhi normalisation (spec 04);
                                                              // on MATCH, pinyin is the CEDICT reading
-  cedictReadings: { pinyin: string, definitions: string[] }[],   // all CEDICT entries for this hanzi
+  cedictReadings: { pinyin: string, pinyinNumbered: string, definitions: string[] }[],  // all CEDICT entries for this hanzi
+  pinyinError: string | null,    // pinyin could not be parsed for the hanzi's syllable count (pinyinNumbered is null)
   existingWordId: number | null, // word with same (hanzi, pinyinNumbered) already in vocabulary
   alreadyInLesson: boolean
 }
@@ -36,7 +37,10 @@ Per row:
 Rows with `PINYIN_MISMATCH` that are still included require an explicit "keep my pinyin" tick
 (`acceptMismatch = true`) before Confirm is enabled. Changing the pinyin to a CEDICT reading clears the warning.
 
-Re-validate on edit: after hanzi/pinyin changes, call `GET /api/dictionary?q=` to refresh the badge.
+Re-validate on edit: when the hanzi or pinyin field loses focus, call `GET /api/dictionary/check?hanzi=&pinyin=`.
+It applies the same normalisation and comparison as confirmation (so the badge cannot disagree with the confirm
+result) and returns the canonical pinyin, which replaces the typed text. A "low confidence", "already known" or
+"already in lesson" badge is not recomputed on edit.
 
 Also show `extraction.warnings` above the table and the extracted sentences / grammar points read-only below it.
 
@@ -56,9 +60,10 @@ In one transaction, per item:
    - **New** → insert. `cedict_entry_id` = matching CEDICT entry if `MATCH`. `verified` = `MATCH || acceptMismatch`.
      Create review cards `RECOGNITION`, `WRITING`, `TONE` (state `NEW`, due now).
 3. Upsert `lesson_word (lesson_id, word_id)` with `source_page_id` and example sentence
-   (keep existing example sentence if the new one is null).
+   (keep existing example sentence if the new one is null; an existing `source_page_id` is kept).
 
-Then mark the page as confirmed (`page_image.confirmed_at`).
+Then mark the page as confirmed (`page_image.confirmed_at`, set on the first confirmation only).
+An English meaning is required for every item.
 
 Validation errors → 400 with per-item messages: empty hanzi, hanzi without CJK characters, unparsable pinyin
 (includes syllable count ≠ `syllableCount(hanzi)`; erhua `儿` counts as the syllable `r5`).
