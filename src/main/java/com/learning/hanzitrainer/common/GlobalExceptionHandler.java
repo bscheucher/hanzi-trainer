@@ -36,6 +36,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 "The data was changed by a concurrent request. Reload and try again.");
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    ProblemDetail handleBadRequest(BadRequestException ex) {
+        return problem(HttpStatus.BAD_REQUEST, "Bad request", ex.getMessage());
+    }
+
     @ExceptionHandler(InvalidItemsException.class)
     ProblemDetail handleInvalidItems(InvalidItemsException ex) {
         ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Invalid items", ex.getMessage());

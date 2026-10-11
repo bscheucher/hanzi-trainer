@@ -9,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /** Small CC-CEDICT sample plus a textbook with two lessons, for confirmation and candidate tests. */
-final class VocabularyFixture {
+public final class VocabularyFixture {
 
     static final String CEDICT = """
             學習 学习 [xue2 xi2] /to learn/to study/
@@ -25,9 +25,9 @@ final class VocabularyFixture {
             一點兒 一点儿 [yi1 dian3 r5] /a little/
             """;
 
-    final long textbookId;
-    final long lesson1;
-    final long lesson2;
+    public final long textbookId;
+    public final long lesson1;
+    public final long lesson2;
 
     private VocabularyFixture(long textbookId, long lesson1, long lesson2) {
         this.textbookId = textbookId;
@@ -35,7 +35,7 @@ final class VocabularyFixture {
         this.lesson2 = lesson2;
     }
 
-    static VocabularyFixture create(JdbcTemplate jdbc, CedictImporter importer, Path dir) {
+    public static VocabularyFixture create(JdbcTemplate jdbc, CedictImporter importer, Path dir) {
         try {
             importer.importFile(Files.writeString(dir.resolve("cedict.u8"), CEDICT));
         } catch (IOException e) {
@@ -49,13 +49,13 @@ final class VocabularyFixture {
         return new VocabularyFixture(textbook, l1, l2);
     }
 
-    long page(JdbcTemplate jdbc, long lessonId) {
+    public long page(JdbcTemplate jdbc, long lessonId) {
         return jdbc.queryForObject("""
                 INSERT INTO page_image (lesson_id, storage_path, mime_type, extraction_status)
                 VALUES (?, 'x.jpg', 'image/jpeg', 'DONE') RETURNING id""", Long.class, lessonId);
     }
 
-    static void cleanUp(JdbcTemplate jdbc) {
+    public static void cleanUp(JdbcTemplate jdbc) {
         jdbc.update("DELETE FROM word");
         jdbc.update("DELETE FROM textbook");
         jdbc.update("DELETE FROM cedict_entry");

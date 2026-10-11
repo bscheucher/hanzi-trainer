@@ -6,11 +6,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface WordRepository extends JpaRepository<Word, Long> {
 
     Optional<Word> findByHanziAndPinyinNumbered(String hanzi, String pinyinNumbered);
+
+    /** Random other words with a meaning: distractor candidates outside the lesson (spec 07). */
+    @Query(value = """
+            SELECT * FROM word WHERE id <> :excludeId AND meaning_en IS NOT NULL
+            ORDER BY random() LIMIT :limit""", nativeQuery = true)
+    List<Word> findRandomOthers(@Param("excludeId") long excludeId, @Param("limit") int limit);
 
     String SEARCH_WHERE = """
             WHERE (CAST(:lessonId AS bigint) IS NULL OR EXISTS (
