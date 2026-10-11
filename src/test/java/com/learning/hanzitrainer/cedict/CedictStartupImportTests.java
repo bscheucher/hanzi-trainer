@@ -62,7 +62,7 @@ class CedictStartupImportTests {
     }
 
     private CedictStartupImport startupImport(Path file, boolean enabled) {
-        var properties = new HanziProperties(new HanziProperties.Cedict(file, enabled), null, null, null);
+        var properties = new HanziProperties(new HanziProperties.Cedict(file, enabled), null, null, null, null);
         return new CedictStartupImport(importer, repository, properties);
     }
 }

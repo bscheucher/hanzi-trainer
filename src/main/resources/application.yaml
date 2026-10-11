@@ -44,3 +44,5 @@ hanzi:
     max-image-px: 2576     # Claude's high-resolution limit (long edge); smaller costs fewer image tokens
     timeout: 120s
     # max-concurrent: 1    # model calls at once; default 1 for ollama, 2 for anthropic
+  exercises:
+    default-session-size: 15

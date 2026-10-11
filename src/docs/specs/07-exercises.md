@@ -118,7 +118,13 @@ option is not in the options or whose blank count ≠ 1, `WORD_ORDER` whose toke
 `POST /api/practice/sessions {lessonId, types?, size?}`:
 - Code-generated exercises are created on the fly if fewer than needed exist.
 - LLM types are only taken from stored exercises (generation is a separate, explicit action).
-- Mix types; never two exercises for the same word back-to-back.
+- Mix types; never two exercises for the same word back-to-back (unless only one word is left).
+- Each word/type pair appears at most once per session; a lesson with fewer pairs than `size` gives a shorter
+  session. `size` defaults to `hanzi.exercises.default-session-size` (15); `types` defaults to the types the
+  player supports (M5: `HANZI_TO_MEANING`, `TONE`).
+- A stored code-generated exercise whose answer no longer matches its word (meaning edited) is deleted and
+  regenerated.
+- Answers in free practice are graded but not stored.
 
 ## Suggested rating (shared with spec 09)
 

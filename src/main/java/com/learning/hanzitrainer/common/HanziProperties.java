@@ -12,7 +12,8 @@ public record HanziProperties(
         @DefaultValue Cedict cedict,
         @DefaultValue Storage storage,
         @DefaultValue Llm llm,
-        @DefaultValue Extraction extraction) {
+        @DefaultValue Extraction extraction,
+        @DefaultValue Exercises exercises) {
 
     /**
      * @param file            CC-CEDICT file, downloaded by the user (the app never downloads it)
@@ -51,5 +52,9 @@ public record HanziProperties(
             }
             return "ollama".equals(provider) ? 1 : 2;
         }
+    }
+
+    /** @param defaultSessionSize exercises per practice session when the request gives no size */
+    public record Exercises(@DefaultValue("15") int defaultSessionSize) {
     }
 }
