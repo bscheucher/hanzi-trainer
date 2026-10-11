@@ -71,8 +71,15 @@ ReadingCheckDto { pinyin, pinyinNumbered: string | null, cedictStatus: 'MATCH'|'
 Confirmation validates all items first; if any is invalid nothing is stored and the response is 400 with
 `ProblemDetail.errors: { index, message }[]` (index into `items`). `sourcePageId` must belong to the lesson.
 
-`q` search on `/words`: matches `hanzi` (contains), `pinyin_numbered` with tones stripped
-(`xuexi` matches `xue2 xi2`), or meaning (case-insensitive contains).
+`q` search on `/words`: matches `hanzi` (contains), meaning EN/DE (case-insensitive contains), or the reading,
+ignoring spaces and apostrophes in the query:
+- without tones, tones are ignored: `xuexi` matches `xue2 xi2`;
+- with tone numbers or tone marks, only that reading matches: `xue2xi2` and `xuéxí` match `xue2 xi2`, `xuěxí` does not.
+
+`ü` may be typed as `ü`, `v` or `u:`. Results are newest first; `size` defaults to 50 (max 200).
+
+`PATCH /words/{id}`: a field that is absent or null stays unchanged; a blank `meaningDe` or `partOfSpeech` clears it;
+`meaningEn` cannot be blank (400).
 
 ## Exercises
 
