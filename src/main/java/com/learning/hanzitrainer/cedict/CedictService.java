@@ -29,12 +29,20 @@ public class CedictService {
      * Normalises a word's pinyin and compares it with CC-CEDICT, exactly as confirmation does (spec 06): tone-marked
      * input → numbered via {@link PinyinConverter#toNumbered}; on {@code MATCH} the dictionary reading becomes
      * canonical (一/不 sandhi resolved); display pinyin is re-derived from the numbered form and keeps a leading
-     * capital (proper nouns). Unparsable pinyin is reported in {@link ReadingCheck#error()}, not thrown.
+     * capital (proper nouns). Among matching entries, the one whose case agrees with the input wins, so {@code wáng}
+     * for 王 links "king", not "surname Wang"; a capital comes from the dictionary only when no lowercase entry
+     * matches (北京). Invalid hanzi and unparsable pinyin are reported in {@link ReadingCheck#error()}, not thrown.
      */
     public ReadingCheck check(String hanzi, String pinyin) {
         String h = hanzi == null ? "" : hanzi.strip();
         String p = pinyin == null ? "" : pinyin.strip();
         List<CedictEntry> entries = h.isEmpty() ? List.of() : lookup(h);
+        String problem = HanziText.problem(h);
+        if (problem != null) {
+            CedictMatch.Status status = entries.isEmpty() ? CedictMatch.Status.NOT_FOUND
+                    : CedictMatch.Status.PINYIN_MISMATCH;
+            return new ReadingCheck(p, null, status, null, entries, "Hanzi '" + h + "': " + problem);
+        }
         String numbered;
         try {
             numbered = PinyinConverter.toNumbered(p, HanziText.syllableCount(h));
@@ -44,11 +52,11 @@ public class CedictService {
             return new ReadingCheck(p, null, status, null, entries, "Pinyin '" + p + "' does not fit "
                     + HanziText.syllableCount(h) + " syllable(s)");
         }
-        CedictMatch match = match(h, numbered, entries);
         boolean capital = !p.isEmpty() && Character.isUpperCase(p.charAt(0));
+        CedictMatch match = match(h, numbered, entries, capital);
         if (match.status() == CedictMatch.Status.MATCH) {
             numbered = match.entry().getPinyinNumbered();
-            capital |= Character.isUpperCase(match.entry().getPinyin().charAt(0));
+            capital |= isCapitalised(match.entry());
         }
         return new ReadingCheck(display(numbered, capital), numbered, match.status(), match.entry(), entries, null);
     }
@@ -61,7 +69,7 @@ public class CedictService {
     /**
      * @param pinyin         canonical display pinyin (or the input as given when unparsable)
      * @param pinyinNumbered lowercase numbered pinyin, null when unparsable
-     * @param entry          matching entry (lowest id) when {@code status == MATCH}
+     * @param entry          matching entry (case agreeing with the input, then lowest id) when {@code status == MATCH}
      * @param entries        all CC-CEDICT entries for the hanzi
      */
     public record ReadingCheck(String pinyin, String pinyinNumbered, CedictMatch.Status status, CedictEntry entry,
@@ -74,24 +82,33 @@ public class CedictService {
     }
 
     /**
-     * Compares syllable by syllable, case-insensitively, ignoring spaces; Latin letters are compared one by one
+     * Compares syllable by syllable, case-insensitively (a lowercase entry is preferred over a capitalised one), ignoring spaces; Latin letters are compared one by one
      * ({@code AA zhi4} equals {@code A A zhi4}). 一 and 不 match any of their sandhi readings.
      */
     public CedictMatch match(String hanzi, String pinyinNumbered) {
-        return match(hanzi, pinyinNumbered, lookup(hanzi));
+        return match(hanzi, pinyinNumbered, lookup(hanzi), false);
     }
 
-    private CedictMatch match(String hanzi, String pinyinNumbered, List<CedictEntry> entries) {
+    /** @param capital prefer a capitalised entry (proper noun) over a lowercase one; otherwise the reverse */
+    private CedictMatch match(String hanzi, String pinyinNumbered, List<CedictEntry> entries, boolean capital) {
         if (entries.isEmpty()) {
             return CedictMatch.notFound();
         }
         List<Integer> units = hanziUnits(hanzi.strip());
         List<String> candidate = pinyinUnits(pinyinNumbered);
-        return entries.stream()
+        List<CedictEntry> matching = entries.stream()
                 .filter(e -> sameReading(units, candidate, pinyinUnits(e.getPinyinNumbered())))
+                .toList();
+        return matching.stream()
+                .filter(e -> isCapitalised(e) == capital)
                 .findFirst()
+                .or(() -> matching.stream().findFirst())
                 .map(CedictMatch::match)
                 .orElseGet(CedictMatch::mismatch);
+    }
+
+    private static boolean isCapitalised(CedictEntry entry) {
+        return !entry.getPinyin().isEmpty() && Character.isUpperCase(entry.getPinyin().charAt(0));
     }
 
     private static boolean sameReading(List<Integer> hanziUnits, List<String> a, List<String> b) {

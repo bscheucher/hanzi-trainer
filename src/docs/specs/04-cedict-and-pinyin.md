@@ -47,7 +47,9 @@ comparing pinyin syllable-by-syllable, case-insensitive, spaces ignored. Latin l
   for 一 matches `yi1|yi2|yi4` and for 不 matches `bu4|bu2`. On `MATCH`, the CEDICT reading is the canonical
   pinyin (stored words always use dictionary tones).
 - **Duplicates:** `(simplified, pinyin_numbered)` is not unique (干 `gan1` exists for traditional 乾 and 干).
-  Link the entry with the lowest `id`; show definitions of all matching entries.
+  Link the entry with the lowest `id`; show definitions of all matching entries. Exception: if the matching
+  entries differ in case (王 `[Wang2]` surname, `[wang2]` king), prefer the one whose case agrees with the input
+  pinyin, lowercase by default (spec 06, "Confirmation").
 
 ## PinyinConverter (Java, plus a TS twin in `src/lib/pinyin.ts` of the frontend repo)
 

@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -160,10 +161,11 @@ class ConfirmationServiceTests {
                 item("hello", "hello", "x", false),
                 item("学习", "xuéxí xíxí", "to study", false),
                 item("朋友", "péngyou", " ", false),
+                null,
                 item("朋友", "péngyou", "friend", false))))
                 .isInstanceOf(InvalidItemsException.class)
                 .satisfies(e -> assertThat(((InvalidItemsException) e).errors())
-                        .extracting(ItemError::index).containsExactly(0, 1, 2, 3));
+                        .extracting(ItemError::index).containsExactly(0, 1, 2, 3, 4));
         assertThat(count("word")).isZero();
     }
 
@@ -188,6 +190,15 @@ class ConfirmationServiceTests {
     }
 
     @Test
+    void lowercaseInputLinksTheCommonEntryNotTheSurname() {
+        ConfirmResult result = service.confirm(fx.lesson1, request(null, item("王", "wáng", "king", false)));
+
+        assertThat(result.words().getFirst().pinyin()).isEqualTo("wáng");
+        assertThat(jdbc.queryForObject("SELECT e.pinyin_numbered FROM word w JOIN cedict_entry e "
+                + "ON e.id = w.cedict_entry_id", String.class)).isEqualTo("wang2");
+    }
+
+    @Test
     void pageOfAnotherLessonIsRejected() {
         long foreignPage = fx.page(jdbc, fx.lesson2);
 
@@ -197,7 +208,7 @@ class ConfirmationServiceTests {
     }
 
     private ConfirmRequest request(Long pageId, ConfirmItem... items) {
-        return new ConfirmRequest(pageId, List.of(items));
+        return new ConfirmRequest(pageId, Arrays.asList(items));
     }
 
     private static ConfirmItem item(String hanzi, String pinyin, String meaningEn, boolean acceptMismatch) {

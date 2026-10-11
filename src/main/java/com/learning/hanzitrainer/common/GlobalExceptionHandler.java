@@ -2,6 +2,7 @@ package com.learning.hanzitrainer.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -25,6 +26,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     ProblemDetail handleConflict(ConflictException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+    }
+
+    /** A unique key lost a race, e.g. the same words confirmed twice at once; retrying sees the committed rows. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation", ex);
+        return problem(HttpStatus.CONFLICT, "Conflict",
+                "The data was changed by a concurrent request. Reload and try again.");
     }
 
     @ExceptionHandler(InvalidItemsException.class)

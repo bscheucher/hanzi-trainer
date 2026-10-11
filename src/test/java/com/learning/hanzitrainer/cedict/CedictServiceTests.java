@@ -115,6 +115,32 @@ class CedictServiceTests {
     }
 
     @Test
+    void checkPrefersTheEntryWhoseCaseMatchesTheInput() {
+        CedictEntry surname = new CedictEntry("王", "王", "Wang2", "Wáng", List.of("surname Wang"));
+        ReflectionTestUtils.setField(surname, "id", 1L);
+        CedictEntry king = entry(2, "王", "wang2");
+        given("王", surname, king);
+
+        var common = service.check("王", "wáng");
+        assertThat(common.pinyin()).isEqualTo("wáng");
+        assertThat(common.entry()).isSameAs(king);
+
+        var name = service.check("王", "Wáng");
+        assertThat(name.pinyin()).isEqualTo("Wáng");
+        assertThat(name.entry()).isSameAs(surname);
+    }
+
+    @Test
+    void checkRejectsInvalidHanziLikeConfirmation() {
+        given("你好!");
+
+        var check = service.check("你好!", "nǐhǎo");
+
+        assertThat(check.pinyinNumbered()).isNull();
+        assertThat(check.error()).isEqualTo("Hanzi '你好!': contains '!'");
+    }
+
+    @Test
     void checkReportsUnparsablePinyinWithoutThrowing() {
         given("学习", entry(1, "学习", "xue2 xi2"));
 

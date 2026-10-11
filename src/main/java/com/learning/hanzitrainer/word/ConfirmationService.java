@@ -92,6 +92,10 @@ public class ConfirmationService {
         List<Normalised> normalised = new ArrayList<>();
         for (int i = 0; i < items.size(); i++) {
             ConfirmItem item = items.get(i);
+            if (item == null) {
+                errors.add(new ItemError(i, "Item is missing"));
+                continue;
+            }
             String hanzi = item.hanzi() == null ? "" : item.hanzi().strip();
             String problem = HanziText.problem(hanzi);
             if (problem != null) {

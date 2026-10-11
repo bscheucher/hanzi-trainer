@@ -54,7 +54,9 @@ Re-running extraction on a confirmed page asks for confirmation, replaces `raw_e
 In one transaction, per item:
 1. Normalise: trim; `pinyinNumbered = PinyinConverter.toNumbered(pinyin, syllableCount(hanzi))`; apply
    一/不 sandhi normalisation (spec 04); re-derive display pinyin from numbered so formatting is canonical,
-   capitalising its first letter if the input pinyin started with an uppercase letter.
+   capitalising its first letter if the input pinyin started with an uppercase letter. When several CEDICT entries
+   match, the one whose case agrees with the input wins (`王 wáng` → "king", `王 Wáng` → "surname Wang"). If only
+   capitalised entries match (`北京 [Bei3 jing1]`), the display pinyin is capitalised even for lowercase input.
 2. Find `word` by `(hanzi, pinyinNumbered)`.
    - **Exists** → reuse. Fill empty `meaning_de` / `part_of_speech` if provided; never overwrite non-empty fields.
    - **New** → insert. `cedict_entry_id` = matching CEDICT entry if `MATCH`. `verified` = `MATCH || acceptMismatch`.

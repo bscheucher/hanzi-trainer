@@ -20,6 +20,8 @@ final class VocabularyFixture {
             不是 不是 [bu4 shi4] /no/is not/
             不是 不是 [bu4 shi5] /fault; blame/
             北京 北京 [Bei3 jing1] /Beijing/
+            王 王 [Wang2] /surname Wang/
+            王 王 [wang2] /king/
             一點兒 一点儿 [yi1 dian3 r5] /a little/
             """;
 
