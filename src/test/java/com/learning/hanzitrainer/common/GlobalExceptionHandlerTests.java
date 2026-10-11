@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +40,13 @@ class GlobalExceptionHandlerTests {
     }
 
     @Test
+    void dataIntegrityViolationBecomes409() throws Exception {
+        mockMvc.perform(get("/test/duplicate-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Conflict"));
+    }
+
+    @Test
     void unexpectedExceptionBecomes500WithoutDetailsLeaking() throws Exception {
         mockMvc.perform(get("/test/boom"))
                 .andExpect(status().isInternalServerError())
@@ -63,6 +71,11 @@ class GlobalExceptionHandlerTests {
         @GetMapping("/test/conflict")
         void conflict() {
             throw new ConflictException("lessonNo 1 already exists");
+        }
+
+        @GetMapping("/test/duplicate-key")
+        void duplicateKey() {
+            throw new DataIntegrityViolationException("duplicate key value violates unique constraint");
         }
 
         @GetMapping("/test/boom")

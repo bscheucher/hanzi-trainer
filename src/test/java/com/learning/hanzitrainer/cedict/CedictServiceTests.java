@@ -91,6 +91,67 @@ class CedictServiceTests {
         assertThat(service.match("Tony老师", "T O N Y lao3 shi1").status()).isEqualTo(CedictMatch.Status.MATCH);
     }
 
+    @Test
+    void checkCanonicalisesMatchesToDictionaryReading() {
+        given("不是", entry(1, "不是", "bu4 shi4"));
+
+        var check = service.check(" 不是 ", "bú shì");
+
+        assertThat(check.status()).isEqualTo(CedictMatch.Status.MATCH);
+        assertThat(check.pinyinNumbered()).isEqualTo("bu4 shi4");
+        assertThat(check.pinyin()).isEqualTo("bùshì");
+        assertThat(check.error()).isNull();
+    }
+
+    @Test
+    void checkKeepsProperNounCapital() {
+        CedictEntry beijing = new CedictEntry("北京", "北京", "bei3 jing1", "Běijīng", List.of("Beijing"));
+        ReflectionTestUtils.setField(beijing, "id", 1L);
+        given("北京", beijing);
+
+        assertThat(service.check("北京", "běijīng").pinyin()).isEqualTo("Běijīng");
+        given("北海");
+        assertThat(service.check("北海", "Běihǎi").pinyin()).isEqualTo("Běihǎi");
+    }
+
+    @Test
+    void checkPrefersTheEntryWhoseCaseMatchesTheInput() {
+        CedictEntry surname = new CedictEntry("王", "王", "Wang2", "Wáng", List.of("surname Wang"));
+        ReflectionTestUtils.setField(surname, "id", 1L);
+        CedictEntry king = entry(2, "王", "wang2");
+        given("王", surname, king);
+
+        var common = service.check("王", "wáng");
+        assertThat(common.pinyin()).isEqualTo("wáng");
+        assertThat(common.entry()).isSameAs(king);
+
+        var name = service.check("王", "Wáng");
+        assertThat(name.pinyin()).isEqualTo("Wáng");
+        assertThat(name.entry()).isSameAs(surname);
+    }
+
+    @Test
+    void checkRejectsInvalidHanziLikeConfirmation() {
+        given("你好!");
+
+        var check = service.check("你好!", "nǐhǎo");
+
+        assertThat(check.pinyinNumbered()).isNull();
+        assertThat(check.error()).isEqualTo("Hanzi '你好!': contains '!'");
+    }
+
+    @Test
+    void checkReportsUnparsablePinyinWithoutThrowing() {
+        given("学习", entry(1, "学习", "xue2 xi2"));
+
+        var check = service.check("学习", "xue");
+
+        assertThat(check.pinyinNumbered()).isNull();
+        assertThat(check.status()).isEqualTo(CedictMatch.Status.PINYIN_MISMATCH);
+        assertThat(check.error()).contains("2 syllable");
+        assertThat(check.entries()).hasSize(1);
+    }
+
     private void given(String hanzi, CedictEntry... entries) {
         when(repository.findBySimplifiedOrderByIdAsc(hanzi)).thenReturn(List.of(entries));
     }

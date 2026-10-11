@@ -28,4 +28,10 @@ public class CedictController {
                 .map(CedictEntryDto::from)
                 .toList();
     }
+
+    /** Normalises and checks one reading as confirmation would (spec 06, re-validate on edit). */
+    @GetMapping("/check")
+    public ReadingCheckDto check(@RequestParam @NotBlank String hanzi, @RequestParam(defaultValue = "") String pinyin) {
+        return ReadingCheckDto.from(cedictService.check(hanzi, pinyin));
+    }
 }

@@ -1,5 +1,6 @@
 package com.learning.hanzitrainer.extraction;
 
+import com.learning.hanzitrainer.cedict.HanziText;
 import com.learning.hanzitrainer.cedict.PinyinConverter;
 import com.learning.hanzitrainer.extraction.ExtractionResult.ExtractedSentence;
 import com.learning.hanzitrainer.extraction.ExtractionResult.ExtractedWord;
@@ -17,9 +18,6 @@ import java.util.Set;
  */
 public final class ExtractionResultValidator {
 
-    /** Middle dots in transliterated names (马克·吐温); not counted as syllables. */
-    private static final String NAME_SEPARATORS = "·・";
-
     private ExtractionResultValidator() {
     }
 
@@ -32,7 +30,7 @@ public final class ExtractionResultValidator {
                 continue;
             }
             String hanzi = trimToNull(word.hanzi());
-            String problem = hanziProblem(hanzi);
+            String problem = HanziText.problem(hanzi);
             if (problem != null) {
                 warnings.add("Dropped item '" + Objects.toString(hanzi, "") + "': " + problem);
                 continue;
@@ -54,39 +52,13 @@ public final class ExtractionResultValidator {
                 sentences, clean(raw.grammarPoints()), List.copyOf(warnings));
     }
 
-    /** Null if the hanzi is acceptable, otherwise why it is dropped. */
-    static String hanziProblem(String hanzi) {
-        if (hanzi == null) {
-            return "empty";
-        }
-        boolean hasCjk = false;
-        for (int i = 0; i < hanzi.length(); ) {
-            int cp = hanzi.codePointAt(i);
-            i += Character.charCount(cp);
-            if (isCjk(cp)) {
-                hasCjk = true;
-            } else if (!(cp < 128 && Character.isLetter(cp)) && NAME_SEPARATORS.indexOf(cp) < 0) {
-                return "contains '" + Character.toString(cp) + "'";
-            }
-        }
-        return hasCjk ? null : "no Chinese characters";
-    }
-
-    static int syllableCount(String hanzi) {
-        return (int) hanzi.codePoints().filter(cp -> isCjk(cp) || (cp < 128 && Character.isLetter(cp))).count();
-    }
-
     /** Numbered pinyin when it parses, otherwise the lowercased text, so unparsable items are still kept. */
     private static String dedupeKey(String hanzi, String pinyin) {
         try {
-            return PinyinConverter.toNumbered(pinyin, syllableCount(hanzi));
+            return PinyinConverter.toNumbered(pinyin, HanziText.syllableCount(hanzi));
         } catch (IllegalArgumentException e) {
             return pinyin.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
         }
-    }
-
-    private static boolean isCjk(int cp) {
-        return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) || cp == 0x3007; // 〇 líng
     }
 
     private static List<String> clean(List<String> values) {

@@ -34,7 +34,7 @@ LessonDetailDto   { ...LessonSummaryDto, pages: PageDto[], words: WordDto[] }
 PageDto {
   id, lessonId, pageNo, status: 'PENDING'|'RUNNING'|'DONE'|'FAILED',
   extraction: ExtractionResult | null,    // see spec 05
-  candidates: CandidateDto[] | null,      // extraction items enriched with CEDICT check, see spec 06
+  candidates: CandidateDto[] | null,      // review candidates, see spec 06; only in GET /pages/{id} of a DONE page
   confirmed: boolean,                     // true once vocabulary from this page was confirmed
   errorMessage, createdAt
 }
@@ -51,6 +51,7 @@ PageDto {
 | PATCH | `/words/{id}` | `{meaningEn?, meaningDe?, partOfSpeech?}` | `WordDto` |
 | DELETE | `/words/{id}` | | 204 — deletes the word with its cards, logs and lesson links |
 | GET | `/dictionary` | `q` (simplified hanzi, exact match; pinyin search is out of scope for v1) | `CedictEntryDto[]` (max 20) |
+| GET | `/dictionary/check` | `hanzi`, `pinyin` | `ReadingCheckDto` — normalises and compares one reading exactly as confirmation does |
 
 ```ts
 WordDto        { id, hanzi, pinyin, pinyinNumbered, meaningEn, meaningDe, partOfSpeech, verified }
@@ -63,7 +64,12 @@ ConfirmRequest { sourcePageId?: number, items: ConfirmItem[] }
 ConfirmItem    { hanzi, pinyin, meaningEn, meaningDe?, partOfSpeech?, exampleSentence?,
                  acceptMismatch: boolean }
 ConfirmResult  { created: number, reused: number, linked: number, words: WordDto[] }
+ReadingCheckDto { pinyin, pinyinNumbered: string | null, cedictStatus: 'MATCH'|'PINYIN_MISMATCH'|'NOT_FOUND',
+                  cedictReadings: { pinyin, pinyinNumbered, definitions: string[] }[], error: string | null }
 ```
+
+Confirmation validates all items first; if any is invalid nothing is stored and the response is 400 with
+`ProblemDetail.errors: { index, message }[]` (index into `items`). `sourcePageId` must belong to the lesson.
 
 `q` search on `/words`: matches `hanzi` (contains), `pinyin_numbered` with tones stripped
 (`xuexi` matches `xue2 xi2`), or meaning (case-insensitive contains).

@@ -2,6 +2,7 @@ package com.learning.hanzitrainer.extraction;
 
 import com.learning.hanzitrainer.extraction.ExtractionResult.ExtractedSentence;
 import com.learning.hanzitrainer.extraction.ExtractionResult.ExtractedWord;
+import com.learning.hanzitrainer.cedict.HanziText;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -53,8 +54,8 @@ class ExtractionResultValidatorTests {
 
         assertThat(result.words()).extracting(ExtractedWord::hanzi).containsExactly("马克·吐温", "二〇二六");
         assertThat(result.warnings()).isEmpty();
-        assertThat(ExtractionResultValidator.syllableCount("马克·吐温")).isEqualTo(4);
-        assertThat(ExtractionResultValidator.syllableCount("二〇二六")).isEqualTo(4);
+        assertThat(HanziText.syllableCount("马克·吐温")).isEqualTo(4);
+        assertThat(HanziText.syllableCount("二〇二六")).isEqualTo(4);
     }
 
     @Test
