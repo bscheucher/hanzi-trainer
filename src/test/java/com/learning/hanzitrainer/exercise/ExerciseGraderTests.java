@@ -22,6 +22,9 @@ class ExerciseGraderTests {
     private final Exercise tone = new Exercise(null, ExerciseType.TONE,
             codec.toJson(new ExercisePrompt.Tone("朋友", List.of("peng", "you"))),
             codec.toJson(new ExerciseAnswer.Tone(List.of(2, 5))), "code");
+    private final Exercise writing = new Exercise(null, ExerciseType.MEANING_TO_HANZI,
+            codec.toJson(new ExercisePrompt.MeaningToHanzi("朋友", "friend", "Freund", "péngyou", 2)),
+            codec.toJson(new ExerciseAnswer.MeaningToHanzi("朋友")), "code");
 
     @Test
     void correctMeaningScoresOneAndIsEasyWhenFast() {
@@ -60,6 +63,56 @@ class ExerciseGraderTests {
 
         assertThat(result.correct()).isTrue();
         assertThat(result.suggestedRating()).isEqualTo(3);
+    }
+
+    @Test
+    void handwritingFailsACharacterWithMoreThanThreeMistakes() {
+        AnswerResult result = grader.grade(writing, response(
+                "{\"hanzi\": \"朋友\", \"strokeMistakes\": [3, 4], \"hintsUsed\": 0, \"skipped\": false}"), 6_000);
+
+        assertThat(result.correct()).isFalse();
+        assertThat(result.score()).isEqualTo(0.5);
+        assertThat(result.feedback()).startsWith("友 needed the outline");
+        assertThat(result.suggestedRating()).isEqualTo(2);
+        assertThat(result.expected().get("hanzi").asString()).isEqualTo("朋友");
+    }
+
+    @Test
+    void handwritingWithoutMistakesIsCorrectAndHintsMakeItHard() {
+        AnswerResult clean = grader.grade(writing, response(
+                "{\"hanzi\": \"朋友\", \"strokeMistakes\": [0, 0], \"hintsUsed\": 0, \"skipped\": false}"), 7_000);
+        AnswerResult hinted = grader.grade(writing, response(
+                "{\"hanzi\": \"朋友\", \"strokeMistakes\": [1, 0], \"hintsUsed\": 1, \"skipped\": false}"), 7_000);
+
+        assertThat(clean.correct()).isTrue();
+        assertThat(clean.feedback()).isNull();
+        assertThat(clean.suggestedRating()).isEqualTo(4);
+        assertThat(hinted.correct()).isTrue();
+        assertThat(hinted.suggestedRating()).isEqualTo(2);
+    }
+
+    @Test
+    void skippedHandwritingIsWrong() {
+        AnswerResult result = grader.grade(writing, response(
+                "{\"hanzi\": \"朋友\", \"strokeMistakes\": [], \"hintsUsed\": 0, \"skipped\": true}"), 2_000);
+
+        assertThat(result.correct()).isFalse();
+        assertThat(result.score()).isZero();
+        assertThat(result.feedback()).isEqualTo("Skipped: 朋友 (péngyou).");
+        assertThat(result.suggestedRating()).isEqualTo(1);
+    }
+
+    @Test
+    void handwritingResponsesOfTheWrongShapeAreRejected() {
+        assertThatThrownBy(() -> grader.grade(writing, response("{\"strokeMistakes\": [0, 0]}"), 1))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("skipped");
+        assertThatThrownBy(() -> grader.grade(writing, response("{\"strokeMistakes\": [0], \"skipped\": false}"), 1))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("2 number(s)");
+        assertThatThrownBy(() -> grader.grade(writing, response("{\"strokeMistakes\": [0, -1], \"skipped\": false}"), 1))
+                .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> grader.grade(writing,
+                response("{\"hanzi\": \"老师\", \"strokeMistakes\": [0, 0], \"skipped\": false}"), 1))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("老师");
     }
 
     @Test

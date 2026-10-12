@@ -7,9 +7,12 @@ import tools.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Deterministic grading for the code-generated types (spec 07). */
+/** Deterministic grading for the code-generated types (spec 07), handwriting from the Hanzi Writer quiz result. */
 @Component
 public class ExerciseGrader {
+
+    /** A character with more mistakes than this fails (spec 07). */
+    static final int MAX_MISTAKES_PER_CHARACTER = 3;
 
     private final ExerciseCodec codec;
 
@@ -28,6 +31,7 @@ public class ExerciseGrader {
                             exercise.getAnswer());
             case ExercisePrompt.Tone p ->
                     tone(p, (ExerciseAnswer.Tone) codec.answer(exercise), response, durationMs, exercise.getAnswer());
+            case ExercisePrompt.MeaningToHanzi p -> meaningToHanzi(p, response, durationMs, exercise.getAnswer());
         };
     }
 
@@ -57,6 +61,62 @@ public class ExerciseGrader {
         boolean correct = wrong.isEmpty();
         String feedback = correct ? null : String.join("; ", wrong) + ".";
         return new AnswerResult(correct, score, expected, feedback, SuggestedRating.of(score, durationMs));
+    }
+
+    /**
+     * Skipping is wrong; otherwise a character fails with more than 3 mistakes, i.e. once the outline was shown
+     * ({@code showHintAfterMisses: 3}), and the score is the share of characters that did not fail.
+     */
+    private static AnswerResult meaningToHanzi(ExercisePrompt.MeaningToHanzi prompt, JsonNode response,
+                                               long durationMs, JsonNode expected) {
+        if (response == null || !response.isObject()) {
+            throw new BadRequestException("MEANING_TO_HANZI response needs \"strokeMistakes\" and \"skipped\"");
+        }
+        JsonNode hanzi = response.get("hanzi");
+        if (hanzi != null && !hanzi.isNull() && !prompt.hanzi().equals(hanzi.asString())) {
+            throw new BadRequestException("Response is for " + hanzi.asString() + ", not " + prompt.hanzi());
+        }
+        JsonNode skipped = response.get("skipped");
+        if (skipped == null || !skipped.isBoolean()) {
+            throw new BadRequestException("MEANING_TO_HANZI response needs a boolean \"skipped\"");
+        }
+        int hintsUsed = nonNegative(response.get("hintsUsed"), "hintsUsed");
+        if (skipped.asBoolean()) {
+            return new AnswerResult(false, 0, expected, "Skipped: " + prompt.hanzi() + " (" + prompt.pinyin() + ").",
+                    1);
+        }
+        JsonNode mistakes = response.get("strokeMistakes");
+        if (mistakes == null || !mistakes.isArray() || mistakes.size() != prompt.characterCount()) {
+            throw new BadRequestException("MEANING_TO_HANZI response needs \"strokeMistakes\" with "
+                    + prompt.characterCount() + " number(s)");
+        }
+        int[] chars = prompt.hanzi().codePoints().toArray();
+        List<String> failed = new ArrayList<>();
+        int total = 0;
+        for (int i = 0; i < mistakes.size(); i++) {
+            int count = nonNegative(mistakes.get(i), "strokeMistakes");
+            total += count;
+            if (count > MAX_MISTAKES_PER_CHARACTER) {
+                failed.add(Character.toString(chars[i]));
+            }
+        }
+        double score = (double) (chars.length - failed.size()) / chars.length;
+        boolean correct = failed.isEmpty();
+        String feedback = correct ? null : String.join(" ", failed) + " needed the outline (more than "
+                + MAX_MISTAKES_PER_CHARACTER + " mistakes). Write it again a few times.";
+        return new AnswerResult(correct, score, expected, feedback,
+                SuggestedRating.writing(score, durationMs, total, hintsUsed));
+    }
+
+    /** A missing or null value counts as 0. */
+    private static int nonNegative(JsonNode value, String field) {
+        if (value == null || value.isNull()) {
+            return 0;
+        }
+        if (!value.isInt() || value.asInt() < 0) {
+            throw new BadRequestException("\"" + field + "\" must be a whole number ≥ 0");
+        }
+        return value.asInt();
     }
 
     private static List<Integer> tones(JsonNode response, int expectedCount) {
