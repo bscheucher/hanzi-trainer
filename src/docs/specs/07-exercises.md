@@ -43,7 +43,7 @@ Syllables come from `pinyin_numbered`; erhua `r5` and Latin tokens are not asked
 
 ### MEANING_TO_HANZI
 ```jsonc
-prompt:   { "meaningEn": "friend", "meaningDe": "Freund", "pinyin": "péngyou", "characterCount": 2 }
+prompt:   { "hanzi": "朋友", "meaningEn": "friend", "meaningDe": "Freund", "pinyin": "péngyou", "characterCount": 2 }
 answer:   { "hanzi": "朋友" }
 response: { "hanzi": "朋友", "strokeMistakes": [0, 2], "hintsUsed": 1, "skipped": false }
 ```
@@ -52,8 +52,10 @@ Grading:
 - A character **fails** if it has > 3 mistakes (the outline was shown, `showHintAfterMisses: 3`).
   Characters without stroke data are self-assessed and reported as `0` (correct) or `4` (wrong) mistakes.
 - `score` = share of characters that did not fail; `correct` = `score == 1`.
-The client knows the target characters (required by Hanzi Writer) but does not display them until finished.
-Accepting that the answer is technically in the client is fine for a personal learning app.
+The prompt carries `hanzi` because Hanzi Writer needs the target characters; the client does not display them
+until finished. Accepting that the answer is technically in the client is fine for a personal learning app.
+Only words made entirely of Chinese characters are asked (no stroke data for Latin letters, e.g. `AA制`).
+The prompt shows the meanings and pinyin, so editing any of them makes a stored exercise stale (see "Practice session").
 
 ### FILL_BLANK
 ```jsonc
@@ -121,9 +123,9 @@ option is not in the options or whose blank count ≠ 1, `WORD_ORDER` whose toke
 - Mix types; never two exercises for the same word back-to-back (unless only one word is left).
 - Each word/type pair appears at most once per session; a lesson with fewer pairs than `size` gives a shorter
   session. `size` defaults to `hanzi.exercises.default-session-size` (15); `types` defaults to the types the
-  player supports (M5: `HANZI_TO_MEANING`, `TONE`).
-- A stored code-generated exercise whose answer no longer matches its word (meaning edited) is deleted and
-  regenerated.
+  player supports (M6: `HANZI_TO_MEANING`, `TONE`, `MEANING_TO_HANZI`).
+- A stored code-generated exercise whose answer or prompt no longer matches its word (meaning edited) is deleted
+  and regenerated.
 - Answers in free practice are graded but not stored.
 
 ## Suggested rating (shared with spec 09)

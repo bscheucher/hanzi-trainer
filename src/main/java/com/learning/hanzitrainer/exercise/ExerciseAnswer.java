@@ -12,4 +12,7 @@ public sealed interface ExerciseAnswer {
     /** @param tones citation tones per asked syllable, neutral = 5 */
     record Tone(List<Integer> tones) implements ExerciseAnswer {
     }
+
+    record MeaningToHanzi(String hanzi) implements ExerciseAnswer {
+    }
 }

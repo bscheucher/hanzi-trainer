@@ -18,11 +18,15 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
-/** Builds the exercise types that need no LLM (spec 07): {@code HANZI_TO_MEANING} and {@code TONE}. */
+/**
+ * Builds the exercise types that need no LLM (spec 07): {@code HANZI_TO_MEANING}, {@code TONE} and
+ * {@code MEANING_TO_HANZI}.
+ */
 @Component
 public class CodeExerciseGenerator {
 
-    static final Set<ExerciseType> TYPES = Set.of(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE);
+    static final Set<ExerciseType> TYPES = Set.of(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE,
+            ExerciseType.MEANING_TO_HANZI);
     static final String GENERATED_BY = "code";
 
     private static final int OPTIONS = 4;
@@ -48,11 +52,16 @@ public class CodeExerciseGenerator {
         this.random = random;
     }
 
-    /** Whether {@code word} can be asked as {@code type} at all (TONE needs at least one toned syllable). */
+    /**
+     * Whether {@code word} can be asked as {@code type} at all: TONE needs at least one toned syllable, writing needs
+     * a word of Chinese characters only (Hanzi Writer has no data for Latin letters such as in AA制).
+     */
     public boolean canGenerate(ExerciseType type, Word word) {
         return switch (type) {
-            case HANZI_TO_MEANING -> word.getMeaningEn() != null && !word.getMeaningEn().isBlank();
+            case HANZI_TO_MEANING -> hasMeaning(word);
             case TONE -> !ToneSyllables.of(word.getPinyinNumbered()).isEmpty();
+            case MEANING_TO_HANZI -> hasMeaning(word) && !word.getHanzi().isEmpty() && word.getHanzi().codePoints()
+                    .allMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
             default -> false;
         };
     }
@@ -65,6 +74,7 @@ public class CodeExerciseGenerator {
         return Optional.of(switch (type) {
             case HANZI_TO_MEANING -> hanziToMeaning(word, lesson, lessonWords);
             case TONE -> tone(word, lesson);
+            case MEANING_TO_HANZI -> meaningToHanzi(word, lesson);
             default -> throw new IllegalArgumentException(type + " is not code-generated");
         });
     }
@@ -77,6 +87,7 @@ public class CodeExerciseGenerator {
         return switch (codec.answer(exercise)) {
             case ExerciseAnswer.HanziToMeaning a -> !Objects.equals(a.correct(), word.getMeaningEn());
             case ExerciseAnswer.Tone a -> !a.tones().equals(ToneSyllables.of(word.getPinyinNumbered()).tones());
+            case ExerciseAnswer.MeaningToHanzi a -> !codec.prompt(exercise).equals(meaningToHanziPrompt(word));
         };
     }
 
@@ -120,6 +131,21 @@ public class CodeExerciseGenerator {
         return new Exercise(lesson, ExerciseType.TONE,
                 codec.toJson(new ExercisePrompt.Tone(word.getHanzi(), syllables.syllables())),
                 codec.toJson(new ExerciseAnswer.Tone(syllables.tones())), GENERATED_BY);
+    }
+
+    private Exercise meaningToHanzi(Word word, Lesson lesson) {
+        return new Exercise(lesson, ExerciseType.MEANING_TO_HANZI, codec.toJson(meaningToHanziPrompt(word)),
+                codec.toJson(new ExerciseAnswer.MeaningToHanzi(word.getHanzi())), GENERATED_BY);
+    }
+
+    /** The prompt shows the meanings and pinyin, so it is stale as soon as one of them is edited. */
+    private static ExercisePrompt.MeaningToHanzi meaningToHanziPrompt(Word word) {
+        return new ExercisePrompt.MeaningToHanzi(word.getHanzi(), word.getMeaningEn(), word.getMeaningDe(),
+                word.getPinyin(), word.getHanzi().codePointCount(0, word.getHanzi().length()));
+    }
+
+    private static boolean hasMeaning(Word word) {
+        return word.getMeaningEn() != null && !word.getMeaningEn().isBlank();
     }
 
     private static List<String> meanings(List<Word> candidates, Predicate<Word> filter) {

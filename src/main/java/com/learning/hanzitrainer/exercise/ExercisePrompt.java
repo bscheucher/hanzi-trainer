@@ -13,4 +13,12 @@ public sealed interface ExercisePrompt {
 
     record Tone(String hanzi, List<String> syllables) implements ExercisePrompt {
     }
+
+    /**
+     * @param hanzi needed by Hanzi Writer on the client; not displayed until the word is written
+     * @param pinyin tone-marked display form
+     */
+    record MeaningToHanzi(String hanzi, String meaningEn, String meaningDe, String pinyin, int characterCount)
+            implements ExercisePrompt {
+    }
 }

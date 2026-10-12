@@ -22,6 +22,7 @@ public class ExerciseCodec {
         Class<? extends ExercisePrompt> shape = switch (exercise.getType()) {
             case HANZI_TO_MEANING -> ExercisePrompt.HanziToMeaning.class;
             case TONE -> ExercisePrompt.Tone.class;
+            case MEANING_TO_HANZI -> ExercisePrompt.MeaningToHanzi.class;
             default -> throw unsupported(exercise.getType());
         };
         return json.treeToValue(exercise.getPrompt(), shape);
@@ -31,6 +32,7 @@ public class ExerciseCodec {
         Class<? extends ExerciseAnswer> shape = switch (exercise.getType()) {
             case HANZI_TO_MEANING -> ExerciseAnswer.HanziToMeaning.class;
             case TONE -> ExerciseAnswer.Tone.class;
+            case MEANING_TO_HANZI -> ExerciseAnswer.MeaningToHanzi.class;
             default -> throw unsupported(exercise.getType());
         };
         return json.treeToValue(exercise.getAnswer(), shape);

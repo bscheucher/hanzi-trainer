@@ -32,7 +32,8 @@ import java.util.Random;
 public class PracticeService {
 
     /** Default mix: the types the player supports so far. */
-    static final List<ExerciseType> DEFAULT_TYPES = List.of(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE);
+    static final List<ExerciseType> DEFAULT_TYPES = List.of(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE,
+            ExerciseType.MEANING_TO_HANZI);
 
     private final LessonRepository lessons;
     private final LessonWordRepository lessonWords;

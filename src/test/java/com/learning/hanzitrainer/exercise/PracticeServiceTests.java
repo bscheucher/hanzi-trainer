@@ -59,17 +59,17 @@ class PracticeServiceTests {
     }
 
     @Test
-    void sessionMixesBothTypesAndUsesEachWordTypePairOnce() {
+    void sessionMixesAllCodeTypesAndUsesEachWordTypePairOnce() {
         confirmThreeWords();
 
         List<ExerciseDto> session = session(fx.lesson1, null, 15);
 
-        assertThat(session).hasSize(6); // 3 words × 2 types, capped
+        assertThat(session).hasSize(9); // 3 words × 3 types, capped
         assertThat(session).extracting(ExerciseDto::type)
-                .containsOnly(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE);
+                .containsOnly(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE, ExerciseType.MEANING_TO_HANZI);
         Set<String> pairs = new HashSet<>();
         session.forEach(e -> pairs.add(e.type() + "/" + e.wordIds()));
-        assertThat(pairs).hasSize(6);
+        assertThat(pairs).hasSize(9);
     }
 
     @Test
@@ -93,8 +93,8 @@ class PracticeServiceTests {
         int stored = count("exercise");
         session(fx.lesson1, null, 15);
 
-        assertThat(stored).isEqualTo(6);
-        assertThat(count("exercise")).isEqualTo(6);
+        assertThat(stored).isEqualTo(9);
+        assertThat(count("exercise")).isEqualTo(9);
         assertThat(jdbc.queryForList("SELECT DISTINCT generated_by FROM exercise", String.class)).containsExactly("code");
     }
 
@@ -160,7 +160,7 @@ class PracticeServiceTests {
                 .filter(e -> e.prompt().get("hanzi").asString().equals("朋友")).findFirst().orElseThrow();
 
         assertThat(options(exercise)).contains("pal").doesNotContain("friend");
-        assertThat(count("exercise")).isEqualTo(6);
+        assertThat(count("exercise")).isEqualTo(9);
     }
 
     @Test
@@ -171,7 +171,46 @@ class PracticeServiceTests {
         List<ExerciseDto> tones = exercises.list(fx.lesson1, ExerciseType.TONE);
 
         assertThat(tones).hasSize(3).allSatisfy(e -> assertThat(e.wordIds()).hasSize(1));
-        assertThat(exercises.list(fx.lesson1, null)).hasSize(6);
+        assertThat(exercises.list(fx.lesson1, null)).hasSize(9);
+    }
+
+    @Test
+    void writingShowsMeaningsAndPinyinAndGradesStrokeMistakes() {
+        confirmThreeWords();
+        jdbc.update("UPDATE word SET meaning_de = 'Freund' WHERE hanzi = '朋友'");
+
+        ExerciseDto exercise = session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15).stream()
+                .filter(e -> e.prompt().get("hanzi").asString().equals("朋友")).findFirst().orElseThrow();
+
+        assertThat(exercise.prompt().get("meaningEn").asString()).isEqualTo("friend");
+        assertThat(exercise.prompt().get("meaningDe").asString()).isEqualTo("Freund");
+        assertThat(exercise.prompt().get("pinyin").asString()).isEqualTo("péngyou");
+        assertThat(exercise.prompt().get("characterCount").asInt()).isEqualTo(2);
+        AnswerResult result = exercises.answer(exercise.id(), new AnswerRequest(json.readTree(
+                "{\"hanzi\": \"朋友\", \"strokeMistakes\": [0, 5], \"hintsUsed\": 0, \"skipped\": false}"), 9_000L, null));
+        assertThat(result.score()).isEqualTo(0.5);
+        assertThat(result.expected().get("hanzi").asString()).isEqualTo("朋友");
+    }
+
+    @Test
+    void anEditedGermanMeaningRegeneratesTheWritingExercise() {
+        confirmThreeWords();
+        session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15);
+        jdbc.update("UPDATE word SET meaning_de = 'Kumpel' WHERE hanzi = '朋友'");
+
+        ExerciseDto exercise = session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15).stream()
+                .filter(e -> e.prompt().get("hanzi").asString().equals("朋友")).findFirst().orElseThrow();
+
+        assertThat(exercise.prompt().get("meaningDe").asString()).isEqualTo("Kumpel");
+        assertThat(count("exercise")).isEqualTo(3);
+    }
+
+    @Test
+    void wordsWithLatinLettersAreNotWritten() {
+        confirm(fx.lesson1, "AA制", "AA zhì", "to split the bill");
+
+        assertThat(session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15)).isEmpty();
+        assertThat(session(fx.lesson1, List.of(ExerciseType.HANZI_TO_MEANING), 15)).hasSize(1);
     }
 
     @Test
