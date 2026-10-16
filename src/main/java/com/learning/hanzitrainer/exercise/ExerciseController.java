@@ -20,10 +20,24 @@ public class ExerciseController {
 
     private final ExerciseService exerciseService;
     private final PracticeService practiceService;
+    private final GenerationJobService generationJobs;
 
-    public ExerciseController(ExerciseService exerciseService, PracticeService practiceService) {
+    public ExerciseController(ExerciseService exerciseService, PracticeService practiceService,
+                              GenerationJobService generationJobs) {
         this.exerciseService = exerciseService;
         this.practiceService = practiceService;
+        this.generationJobs = generationJobs;
+    }
+
+    @PostMapping("/lessons/{lessonId}/exercises/generate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public GenerationJobDto generate(@PathVariable long lessonId, @Valid @RequestBody GenerateExercisesRequest request) {
+        return generationJobs.start(lessonId, request);
+    }
+
+    @GetMapping("/generation-jobs/{id}")
+    public GenerationJobDto generationJob(@PathVariable long id) {
+        return generationJobs.get(id);
     }
 
     @GetMapping("/lessons/{lessonId}/exercises")

@@ -40,6 +40,48 @@ class ExerciseControllerTests {
     @MockitoBean
     private PracticeService practiceService;
 
+    @MockitoBean
+    private GenerationJobService generationJobs;
+
+    @Test
+    void generateStartsAJobWith202() throws Exception {
+        GenerateExercisesRequest request = new GenerateExercisesRequest(List.of(ExerciseType.FILL_BLANK), 5);
+        when(generationJobs.start(7L, request))
+                .thenReturn(new GenerationJobDto(1, GenerationJobDto.Status.RUNNING, 0, 0, null));
+
+        mockMvc.perform(post("/api/lessons/7/exercises/generate").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"types\": [\"FILL_BLANK\"], \"count\": 5}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("RUNNING"))
+                .andExpect(jsonPath("$.created").value(0))
+                .andExpect(jsonPath("$.rejected").value(0));
+    }
+
+    @Test
+    void generateRequestIsValidated() throws Exception {
+        for (String body : List.of("{\"types\": [], \"count\": 5}", "{\"types\": [\"FILL_BLANK\"]}",
+                "{\"types\": [\"FILL_BLANK\"], \"count\": 21}", "{\"types\": [\"FILL_BLANK\"], \"count\": 0}")) {
+            mockMvc.perform(post("/api/lessons/7/exercises/generate").contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(generationJobs);
+    }
+
+    @Test
+    void generationJobIsPolledAndUnknownIs404() throws Exception {
+        when(generationJobs.get(1)).thenReturn(new GenerationJobDto(1, GenerationJobDto.Status.FAILED, 2, 1, "boom"));
+        when(generationJobs.get(9)).thenThrow(new NotFoundException("Generation job", 9));
+
+        mockMvc.perform(get("/api/generation-jobs/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.created").value(2))
+                .andExpect(jsonPath("$.error").value("boom"));
+        mockMvc.perform(get("/api/generation-jobs/9")).andExpect(status().isNotFound());
+    }
+
     @Test
     void sessionReturnsExercisesWithoutAnswers() throws Exception {
         when(practiceService.createSession(new PracticeSessionRequest(7L, List.of(ExerciseType.TONE), 10)))

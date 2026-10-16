@@ -30,10 +30,12 @@ public record HanziProperties(
     /**
      * @param provider        {@code anthropic} or {@code ollama}; also selects Spring AI's chat model
      * @param extractionModel vision-capable model name for the configured provider
+     * @param exerciseModel   model that writes sentence exercises and grades translations (spec 07)
      */
     public record Llm(
             @DefaultValue("anthropic") String provider,
-            @DefaultValue("claude-opus-5-5") String extractionModel) {
+            @DefaultValue("claude-opus-5-5") String extractionModel,
+            @DefaultValue("claude-sonnet-5-5") String exerciseModel) {
     }
 
     /**

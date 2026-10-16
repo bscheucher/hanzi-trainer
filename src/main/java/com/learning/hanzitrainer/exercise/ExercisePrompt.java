@@ -21,4 +21,19 @@ public sealed interface ExercisePrompt {
     record MeaningToHanzi(String hanzi, String meaningEn, String meaningDe, String pinyin, int characterCount)
             implements ExercisePrompt {
     }
+
+    /** @param sentence the sentence with exactly one {@code ___} blank */
+    record FillBlank(String sentence, String translationEn, List<String> options) implements ExercisePrompt {
+    }
+
+    /** @param tokens shuffled; never in an accepted order */
+    record WordOrder(List<String> tokens, String translationEn) implements ExercisePrompt {
+    }
+
+    /**
+     * @param sourceLang {@code de} or {@code en}
+     * @param hintWords  the lesson words the reference uses
+     */
+    record Translation(String source, String sourceLang, List<String> hintWords) implements ExercisePrompt {
+    }
 }

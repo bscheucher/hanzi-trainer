@@ -14,12 +14,14 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Practice sessions (spec 07, "Practice session"). Code-generated exercises are created on the fly when a word has
@@ -31,9 +33,8 @@ import java.util.Random;
 @Transactional
 public class PracticeService {
 
-    /** Default mix: the types the player supports so far. */
-    static final List<ExerciseType> DEFAULT_TYPES = List.of(ExerciseType.HANZI_TO_MEANING, ExerciseType.TONE,
-            ExerciseType.MEANING_TO_HANZI);
+    /** Default mix: every type; sentence types only appear once some were generated for the lesson. */
+    static final List<ExerciseType> DEFAULT_TYPES = List.of(ExerciseType.values());
 
     private final LessonRepository lessons;
     private final LessonWordRepository lessonWords;
@@ -95,10 +96,25 @@ public class PracticeService {
         }
         List<Slot> slots = new ArrayList<>();
         if (!CodeExerciseGenerator.TYPES.contains(type)) {
-            Map<Long, Slot> byExercise = new LinkedHashMap<>();
-            storedByWord.forEach((wordId, list) -> list.forEach(ew -> byExercise.putIfAbsent(
-                    ew.getExercise().getId(), new Slot(type, wordId, null, ew.getExercise()))));
-            slots.addAll(byExercise.values());
+            // A sentence exercise may practise several words; take a random one per word and use none of its
+            // words again, so each word/type pair still appears at most once.
+            Map<Long, List<Long>> wordsByExercise = new LinkedHashMap<>();
+            Map<Long, Exercise> byId = new HashMap<>();
+            storedByWord.values().forEach(list -> list.forEach(ew -> {
+                wordsByExercise.computeIfAbsent(ew.getExercise().getId(), id -> new ArrayList<>())
+                        .add(ew.getWord().getId());
+                byId.put(ew.getExercise().getId(), ew.getExercise());
+            }));
+            List<Long> exerciseIds = new ArrayList<>(wordsByExercise.keySet());
+            Collections.shuffle(exerciseIds, random);
+            Set<Long> used = new HashSet<>();
+            for (Long exerciseId : exerciseIds) {
+                List<Long> wordIds = wordsByExercise.get(exerciseId);
+                if (wordIds.stream().noneMatch(used::contains)) {
+                    used.addAll(wordIds);
+                    slots.add(new Slot(type, wordIds.getFirst(), null, byId.get(exerciseId)));
+                }
+            }
             return slots;
         }
         for (Word word : words) {

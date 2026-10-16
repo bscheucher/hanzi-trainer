@@ -19,6 +19,19 @@ public interface WordRepository extends JpaRepository<Word, Long> {
             ORDER BY random() LIMIT :limit""", nativeQuery = true)
     List<Word> findRandomOthers(@Param("excludeId") long excludeId, @Param("limit") int limit);
 
+    /**
+     * Hanzi of every word except those that appear only in later lessons of the same textbook (spec 07, "Allowed
+     * words"). Words in no lesson at all, or in another textbook, are allowed.
+     */
+    @Query(value = """
+            SELECT DISTINCT w.hanzi FROM word w
+            WHERE NOT EXISTS (SELECT 1 FROM lesson_word lw WHERE lw.word_id = w.id)
+               OR EXISTS (SELECT 1 FROM lesson_word lw JOIN lesson l ON l.id = lw.lesson_id
+                          WHERE lw.word_id = w.id
+                            AND NOT (l.textbook_id = :textbookId AND l.lesson_no > :lessonNo))""",
+            nativeQuery = true)
+    List<String> findAllowedHanzi(@Param("textbookId") long textbookId, @Param("lessonNo") int lessonNo);
+
     String SEARCH_WHERE = """
             WHERE (CAST(:lessonId AS bigint) IS NULL OR EXISTS (
                      SELECT 1 FROM lesson_word lw WHERE lw.word_id = w.id AND lw.lesson_id = :lessonId))

@@ -23,7 +23,9 @@ public class ExerciseCodec {
             case HANZI_TO_MEANING -> ExercisePrompt.HanziToMeaning.class;
             case TONE -> ExercisePrompt.Tone.class;
             case MEANING_TO_HANZI -> ExercisePrompt.MeaningToHanzi.class;
-            default -> throw unsupported(exercise.getType());
+            case FILL_BLANK -> ExercisePrompt.FillBlank.class;
+            case WORD_ORDER -> ExercisePrompt.WordOrder.class;
+            case TRANSLATION -> ExercisePrompt.Translation.class;
         };
         return json.treeToValue(exercise.getPrompt(), shape);
     }
@@ -33,12 +35,10 @@ public class ExerciseCodec {
             case HANZI_TO_MEANING -> ExerciseAnswer.HanziToMeaning.class;
             case TONE -> ExerciseAnswer.Tone.class;
             case MEANING_TO_HANZI -> ExerciseAnswer.MeaningToHanzi.class;
-            default -> throw unsupported(exercise.getType());
+            case FILL_BLANK -> ExerciseAnswer.FillBlank.class;
+            case WORD_ORDER -> ExerciseAnswer.WordOrder.class;
+            case TRANSLATION -> ExerciseAnswer.Translation.class;
         };
         return json.treeToValue(exercise.getAnswer(), shape);
-    }
-
-    private static UnsupportedOperationException unsupported(ExerciseType type) {
-        return new UnsupportedOperationException(type + " exercises are not supported yet");
     }
 }

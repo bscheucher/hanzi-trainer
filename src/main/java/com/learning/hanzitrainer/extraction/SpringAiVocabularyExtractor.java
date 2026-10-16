@@ -1,10 +1,9 @@
 package com.learning.hanzitrainer.extraction;
 
+import com.learning.hanzitrainer.common.StructuredReply;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.AdvisorParams;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ResponseEntity;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.core.io.ByteArrayResource;
@@ -31,14 +30,12 @@ public class SpringAiVocabularyExtractor implements VocabularyExtractor {
     public ExtractionResult extract(byte[] jpegImage) {
         // Native structured output: the schema goes to the provider (Anthropic output_config.format, Ollama format)
         // instead of being appended to the prompt, which made small vision models ignore the image.
-        ResponseEntity<ChatResponse, ExtractionResult> response = chatClient.prompt()
+        StructuredReply<ExtractionResult> reply = StructuredReply.call(chatClient.prompt()
                 .system(systemPrompt)
-                .user(u -> u.text(USER_TEXT).media(MimeTypeUtils.IMAGE_JPEG, new ByteArrayResource(jpegImage)))
-                .advisors(AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT)
-                .call()
-                .responseEntity(ExtractionResult.class);
-        logUsage(response.response());
-        ExtractionResult result = response.entity();
+                .user(u -> u.text(USER_TEXT).media(MimeTypeUtils.IMAGE_JPEG, new ByteArrayResource(jpegImage))),
+                ExtractionResult.class);
+        logUsage(reply.response());
+        ExtractionResult result = reply.entity();
         if (result == null) {
             throw new IllegalStateException("Model " + modelName + " returned no extraction result");
         }

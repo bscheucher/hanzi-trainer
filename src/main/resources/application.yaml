@@ -40,6 +40,7 @@ hanzi:
   llm:
     provider: ${HANZI_LLM_PROVIDER:anthropic}                 # anthropic | ollama
     extraction-model: ${HANZI_EXTRACTION_MODEL:claude-opus-5-5}
+    exercise-model: ${HANZI_EXERCISE_MODEL:claude-sonnet-5-5}   # writes sentence exercises, grades translations
   extraction:
     max-image-px: 2576     # Claude's high-resolution limit (long edge); smaller costs fewer image tokens
     timeout: 120s

@@ -1,10 +1,12 @@
 package com.learning.hanzitrainer.exercise;
 
 import com.learning.hanzitrainer.common.BadRequestException;
+import com.learning.hanzitrainer.common.ServiceUnavailableException;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,7 +16,11 @@ class ExerciseGraderTests {
 
     private final JsonMapper json = JsonMapper.builder().build();
     private final ExerciseCodec codec = new ExerciseCodec(json);
-    private final ExerciseGrader grader = new ExerciseGrader(codec);
+    private final List<String> gradedAnswers = new ArrayList<>();
+    private final ExerciseGrader grader = new ExerciseGrader(codec, (source, reference, answer) -> {
+        gradedAnswers.add(answer);
+        return new TranslationGrader.TranslationGrade(false, 0.6, "跟 works too, but 中文 needs 学.", "我跟朋友学中文。");
+    });
 
     private final Exercise hanziToMeaning = new Exercise(null, ExerciseType.HANZI_TO_MEANING,
             codec.toJson(new ExercisePrompt.HanziToMeaning("朋友", List.of("teacher", "friend", "mother", "Beijing"))),
@@ -25,6 +31,18 @@ class ExerciseGraderTests {
     private final Exercise writing = new Exercise(null, ExerciseType.MEANING_TO_HANZI,
             codec.toJson(new ExercisePrompt.MeaningToHanzi("朋友", "friend", "Freund", "péngyou", 2)),
             codec.toJson(new ExerciseAnswer.MeaningToHanzi("朋友")), "code");
+    private final Exercise fillBlank = new Exercise(null, ExerciseType.FILL_BLANK,
+            codec.toJson(new ExercisePrompt.FillBlank("我和我的___去学校。", "I go to school with my friend.",
+                    List.of("老师", "朋友", "学生", "妈妈"))),
+            codec.toJson(new ExerciseAnswer.FillBlank("朋友", "我和我的朋友去学校。")), "fake-model");
+    private final Exercise wordOrder = new Exercise(null, ExerciseType.WORD_ORDER,
+            codec.toJson(new ExercisePrompt.WordOrder(List.of("学校", "我", "去", "明天"), "I will go to school tomorrow.")),
+            codec.toJson(new ExerciseAnswer.WordOrder(List.of(List.of("我", "明天", "去", "学校"),
+                    List.of("明天", "我", "去", "学校")))), "fake-model");
+    private final Exercise translation = new Exercise(null, ExerciseType.TRANSLATION,
+            codec.toJson(new ExercisePrompt.Translation("Ich lerne mit meinem Freund Chinesisch.", "de",
+                    List.of("朋友", "学习"))),
+            codec.toJson(new ExerciseAnswer.Translation("我和我的朋友学习中文。")), "fake-model");
 
     @Test
     void correctMeaningScoresOneAndIsEasyWhenFast() {
@@ -125,6 +143,74 @@ class ExerciseGraderTests {
         assertThatThrownBy(() -> grader.grade(writing,
                 response("{\"hanzi\": [\"朋\", \"友\"], \"strokeMistakes\": [0, 0], \"skipped\": false}"), 1))
                 .isInstanceOf(BadRequestException.class).hasMessageContaining("string");
+    }
+
+    @Test
+    void fillBlankChecksTheSelectedOption() {
+        AnswerResult right = grader.grade(fillBlank, response("{\"selected\": \"朋友\"}"), 3_000);
+        AnswerResult wrong = grader.grade(fillBlank, response("{\"selected\": \"老师\"}"), 3_000);
+
+        assertThat(right.correct()).isTrue();
+        assertThat(right.suggestedRating()).isEqualTo(4);
+        assertThat(wrong.correct()).isFalse();
+        assertThat(wrong.feedback()).isEqualTo("The sentence is 我和我的朋友去学校。");
+        assertThat(wrong.expected().get("correct").asString()).isEqualTo("朋友");
+    }
+
+    @Test
+    void anyAcceptedWordOrderIsCorrect() {
+        AnswerResult first = grader.grade(wordOrder, response("{\"order\": [\"我\", \"明天\", \"去\", \"学校\"]}"), 9_000);
+        AnswerResult second = grader.grade(wordOrder, response("{\"order\": [\"明天\", \"我\", \"去\", \"学校\"]}"), 9_000);
+        AnswerResult wrong = grader.grade(wordOrder, response("{\"order\": [\"我\", \"去\", \"明天\", \"学校\"]}"), 9_000);
+
+        assertThat(first.correct()).isTrue();
+        assertThat(first.suggestedRating()).isEqualTo(3);
+        assertThat(second.correct()).isTrue();
+        assertThat(wrong.correct()).isFalse();
+        assertThat(wrong.score()).isZero();
+        assertThat(wrong.feedback()).isEqualTo("A correct order: 我 明天 去 学校");
+    }
+
+    @Test
+    void wordOrderMustUseEachTokenOnce() {
+        assertThatThrownBy(() -> grader.grade(wordOrder, response("{\"order\": [\"我\", \"去\", \"学校\"]}"), 1))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("exactly once");
+        assertThatThrownBy(() -> grader.grade(wordOrder,
+                response("{\"order\": [\"我\", \"我\", \"去\", \"学校\"]}"), 1))
+                .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> grader.grade(wordOrder, response("{\"order\": \"我明天去学校\"}"), 1))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void translationsAreGradedByTheLlmWithTheCorrectionInExpected() {
+        AnswerResult result = grader.grade(translation, response("{\"text\": \" 我跟朋友学中文 \"}"), 20_000);
+
+        assertThat(gradedAnswers).containsExactly("我跟朋友学中文");
+        assertThat(result.correct()).isFalse();
+        assertThat(result.score()).isEqualTo(0.6);
+        assertThat(result.feedback()).isEqualTo("跟 works too, but 中文 needs 学.");
+        assertThat(result.suggestedRating()).isEqualTo(2);
+        assertThat(result.expected().get("reference").asString()).isEqualTo("我和我的朋友学习中文。");
+        assertThat(result.expected().get("corrected").asString()).isEqualTo("我跟朋友学中文。");
+    }
+
+    @Test
+    void theReferenceItselfIsCorrectWithoutAskingTheLlm() {
+        AnswerResult result = grader.grade(translation, response("{\"text\": \"我和我的朋友学习中文\"}"), 20_000);
+
+        assertThat(gradedAnswers).isEmpty();
+        assertThat(result.correct()).isTrue();
+        assertThat(result.score()).isEqualTo(1);
+    }
+
+    @Test
+    void translationNeedsTextAndAConfiguredLlm() {
+        assertThatThrownBy(() -> grader.grade(translation, response("{\"text\": \"  \"}"), 1))
+                .isInstanceOf(BadRequestException.class);
+        ExerciseGrader unconfigured = new ExerciseGrader(codec, new UnavailableTranslationGrader("no key"));
+        assertThatThrownBy(() -> unconfigured.grade(translation, response("{\"text\": \"我学中文\"}"), 1))
+                .isInstanceOf(ServiceUnavailableException.class).hasMessage("no key");
     }
 
     @Test
