@@ -84,7 +84,10 @@ public class PracticeService {
         return new PracticeSessionDto(ExerciseService.toDtos(session, exerciseWords));
     }
 
-    /** One slot per word/type pair: an existing valid exercise, or a word to generate one for. */
+    /**
+     * One slot per word/type pair: an existing valid exercise, or a word to generate one for. Stale exercises, and
+     * all stored exercises of a word that can no longer be asked as {@code type}, are deleted.
+     */
     private List<Slot> slots(Lesson lesson, ExerciseType type, List<Word> words) {
         Map<Long, List<ExerciseWord>> storedByWord = new HashMap<>();
         for (ExerciseWord ew : exerciseWords.findByLessonAndType(lesson.getId(), type)) {
@@ -99,19 +102,19 @@ public class PracticeService {
             return slots;
         }
         for (Word word : words) {
-            if (!generator.canGenerate(type, word)) {
-                continue;
-            }
+            boolean askable = generator.canGenerate(type, word);
             Exercise valid = null;
             for (ExerciseWord stored : storedByWord.getOrDefault(word.getId(), List.of())) {
-                if (generator.isStale(stored.getExercise(), word)) {
+                if (!askable || generator.isStale(stored.getExercise(), word)) {
                     exerciseWords.delete(stored);
                     exercises.delete(stored.getExercise());
                 } else if (valid == null) {
                     valid = stored.getExercise();
                 }
             }
-            slots.add(new Slot(type, word.getId(), word, valid));
+            if (askable) {
+                slots.add(new Slot(type, word.getId(), word, valid));
+            }
         }
         return slots;
     }

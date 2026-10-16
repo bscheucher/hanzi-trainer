@@ -2,6 +2,7 @@ package com.learning.hanzitrainer.exercise;
 
 import com.learning.hanzitrainer.cedict.CedictEntry;
 import com.learning.hanzitrainer.cedict.CedictEntryRepository;
+import com.learning.hanzitrainer.cedict.HanziText;
 import com.learning.hanzitrainer.textbook.Lesson;
 import com.learning.hanzitrainer.word.Word;
 import com.learning.hanzitrainer.word.WordRepository;
@@ -54,14 +55,15 @@ public class CodeExerciseGenerator {
 
     /**
      * Whether {@code word} can be asked as {@code type} at all: TONE needs at least one toned syllable, writing needs
-     * a word of Chinese characters only (Hanzi Writer has no data for Latin letters such as in AA制).
+     * a word of Chinese characters only (Hanzi Writer has no data for Latin letters such as in AA制, or for the
+     * middle dot in 马克·吐温).
      */
     public boolean canGenerate(ExerciseType type, Word word) {
         return switch (type) {
             case HANZI_TO_MEANING -> hasMeaning(word);
             case TONE -> !ToneSyllables.of(word.getPinyinNumbered()).isEmpty();
-            case MEANING_TO_HANZI -> hasMeaning(word) && !word.getHanzi().isEmpty() && word.getHanzi().codePoints()
-                    .allMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
+            case MEANING_TO_HANZI -> hasMeaning(word) && !word.getHanzi().isEmpty()
+                    && word.getHanzi().codePoints().allMatch(HanziText::isCjk);
             default -> false;
         };
     }
@@ -84,10 +86,13 @@ public class CodeExerciseGenerator {
      * such exercises are regenerated instead of served.
      */
     public boolean isStale(Exercise exercise, Word word) {
+        if (exercise.getType() == ExerciseType.MEANING_TO_HANZI) {
+            return !codec.prompt(exercise).equals(meaningToHanziPrompt(word));
+        }
         return switch (codec.answer(exercise)) {
             case ExerciseAnswer.HanziToMeaning a -> !Objects.equals(a.correct(), word.getMeaningEn());
             case ExerciseAnswer.Tone a -> !a.tones().equals(ToneSyllables.of(word.getPinyinNumbered()).tones());
-            case ExerciseAnswer.MeaningToHanzi a -> !codec.prompt(exercise).equals(meaningToHanziPrompt(word));
+            case ExerciseAnswer.MeaningToHanzi ignored -> throw new IllegalStateException("checked by type above");
         };
     }
 

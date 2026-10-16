@@ -206,6 +206,24 @@ class PracticeServiceTests {
     }
 
     @Test
+    void aWritingExerciseIsDeletedWhenItsWordLosesTheMeaning() {
+        confirmThreeWords();
+        session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15);
+        jdbc.update("UPDATE word SET meaning_en = NULL WHERE hanzi = '朋友'");
+
+        assertThat(session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15)).hasSize(2);
+        assertThat(exercises.list(fx.lesson1, ExerciseType.MEANING_TO_HANZI))
+                .noneMatch(e -> e.prompt().get("hanzi").asString().equals("朋友"));
+    }
+
+    @Test
+    void namesWithAMiddleDotAreNotWritten() {
+        confirm(fx.lesson1, "马克·吐温", "Mǎkè Tǔwēn", "Mark Twain");
+
+        assertThat(session(fx.lesson1, List.of(ExerciseType.MEANING_TO_HANZI), 15)).isEmpty();
+    }
+
+    @Test
     void wordsWithLatinLettersAreNotWritten() {
         confirm(fx.lesson1, "AA制", "AA zhì", "to split the bill");
 
