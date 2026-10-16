@@ -1,23 +1,33 @@
 package com.learning.hanzitrainer.exercise;
 
 import com.learning.hanzitrainer.common.BadRequestException;
+import com.learning.hanzitrainer.common.ServiceUnavailableException;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
-/** Deterministic grading for the code-generated types (spec 07), handwriting from the Hanzi Writer quiz result. */
+/**
+ * Grading per type (spec 07): deterministic wherever possible, handwriting from the Hanzi Writer quiz result, and
+ * free translations by the LLM through {@link TranslationGrader}.
+ */
 @Component
 public class ExerciseGrader {
 
     /** A character with more mistakes than this fails (spec 07). */
     static final int MAX_MISTAKES_PER_CHARACTER = 3;
+    /** Ignored when comparing a translation with the reference. */
+    private static final Pattern PUNCTUATION_AND_SPACE = Pattern.compile("[\\p{P}\\s]");
 
     private final ExerciseCodec codec;
+    private final TranslationGrader translationGrader;
 
-    public ExerciseGrader(ExerciseCodec codec) {
+    public ExerciseGrader(ExerciseCodec codec, TranslationGrader translationGrader) {
         this.codec = codec;
+        this.translationGrader = translationGrader;
     }
 
     /**
@@ -32,7 +42,81 @@ public class ExerciseGrader {
             case ExercisePrompt.Tone p ->
                     tone(p, (ExerciseAnswer.Tone) codec.answer(exercise), response, durationMs, exercise.getAnswer());
             case ExercisePrompt.MeaningToHanzi p -> meaningToHanzi(p, response, durationMs, exercise.getAnswer());
+            case ExercisePrompt.FillBlank p ->
+                    fillBlank(p, (ExerciseAnswer.FillBlank) codec.answer(exercise), response, durationMs,
+                            exercise.getAnswer());
+            case ExercisePrompt.WordOrder p ->
+                    wordOrder(p, (ExerciseAnswer.WordOrder) codec.answer(exercise), response, durationMs,
+                            exercise.getAnswer());
+            case ExercisePrompt.Translation p ->
+                    translation(p, (ExerciseAnswer.Translation) codec.answer(exercise), response, durationMs,
+                            exercise.getAnswer());
         };
+    }
+
+    private static AnswerResult fillBlank(ExercisePrompt.FillBlank prompt, ExerciseAnswer.FillBlank answer,
+                                          JsonNode response, long durationMs, JsonNode expected) {
+        JsonNode selected = response == null ? null : response.get("selected");
+        if (selected == null || !selected.isString() || !prompt.options().contains(selected.asString())) {
+            throw new BadRequestException("FILL_BLANK response needs \"selected\", one of the options");
+        }
+        boolean correct = answer.correct().equals(selected.asString());
+        String feedback = correct ? null : "The sentence is " + answer.fullSentence();
+        double score = correct ? 1 : 0;
+        return new AnswerResult(correct, score, expected, feedback, SuggestedRating.of(score, durationMs));
+    }
+
+    /** {@code order} must use exactly the prompt's tokens; it is correct if it is one of the accepted orders. */
+    private static AnswerResult wordOrder(ExercisePrompt.WordOrder prompt, ExerciseAnswer.WordOrder answer,
+                                          JsonNode response, long durationMs, JsonNode expected) {
+        JsonNode order = response == null ? null : response.get("order");
+        if (order == null || !order.isArray()) {
+            throw new BadRequestException("WORD_ORDER response needs an array \"order\"");
+        }
+        List<String> given = new ArrayList<>();
+        for (JsonNode token : order) {
+            if (!token.isString()) {
+                throw new BadRequestException("\"order\" must contain the tokens as strings");
+            }
+            given.add(token.asString());
+        }
+        if (!given.stream().sorted().toList().equals(prompt.tokens().stream().sorted().toList())) {
+            throw new BadRequestException("\"order\" must use each token of the exercise exactly once");
+        }
+        boolean correct = answer.accepted().contains(given);
+        String feedback = correct ? null : "A correct order: " + String.join(" ", answer.accepted().getFirst());
+        double score = correct ? 1 : 0;
+        return new AnswerResult(correct, score, expected, feedback, SuggestedRating.of(score, durationMs));
+    }
+
+    /**
+     * The reference itself (ignoring punctuation and spaces) is correct without asking the LLM. {@code expected}
+     * carries the reference and the grader's {@code corrected} sentence.
+     */
+    private AnswerResult translation(ExercisePrompt.Translation prompt, ExerciseAnswer.Translation answer,
+                                     JsonNode response, long durationMs, JsonNode expected) {
+        JsonNode text = response == null ? null : response.get("text");
+        if (text == null || !text.isString() || text.asString().isBlank()) {
+            throw new BadRequestException("TRANSLATION response needs a non-empty string \"text\"");
+        }
+        String given = text.asString().trim();
+        ObjectNode withCorrection = (ObjectNode) expected.deepCopy();
+        if (normalise(given).equals(normalise(answer.reference()))) {
+            withCorrection.put("corrected", given);
+            return new AnswerResult(true, 1, withCorrection, null, SuggestedRating.of(1, durationMs));
+        }
+        translationGrader.unavailableReason().ifPresent(reason -> {
+            throw new ServiceUnavailableException(reason);
+        });
+        TranslationGrader.TranslationGrade grade = translationGrader.grade(prompt.source(), answer.reference(), given);
+        double score = Math.clamp(grade.score(), 0, 1);
+        withCorrection.put("corrected", grade.corrected() == null ? answer.reference() : grade.corrected());
+        return new AnswerResult(grade.correct(), score, withCorrection, grade.feedback(),
+                SuggestedRating.of(score, durationMs));
+    }
+
+    private static String normalise(String chinese) {
+        return PUNCTUATION_AND_SPACE.matcher(chinese).replaceAll("");
     }
 
     private static AnswerResult hanziToMeaning(ExercisePrompt.HanziToMeaning prompt, ExerciseAnswer.HanziToMeaning answer,

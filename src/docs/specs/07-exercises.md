@@ -64,6 +64,8 @@ prompt:   { "sentence": "我和我的___去学校。", "translationEn": "I go to
 answer:   { "correct": "朋友", "fullSentence": "我和我的朋友去学校。" }
 response: { "selected": "朋友" }
 ```
+The LLM writes the sentence with a `___` blank, the correct word and three distractors; code shuffles the options.
+Blanks of any length (`____`, full-width `＿＿`) are normalised to `___`. `selected` must be one of the options.
 
 ### WORD_ORDER
 ```jsonc
@@ -72,7 +74,8 @@ answer:   { "accepted": [["我", "明天", "去", "学校"], ["明天", "我", "
 response: { "order": ["我", "明天", "去", "学校"] }
 ```
 The LLM must list every grammatically acceptable order (usually 1–2). Tokens shuffled server-side;
-the shuffled order must not equal any accepted order.
+the shuffled order must not equal any accepted order (discarded if every order is accepted).
+Punctuation-only tokens (`。`) are dropped. `order` must use each token exactly once (else 400).
 
 ### TRANSLATION
 ```jsonc
@@ -82,7 +85,10 @@ answer:   { "reference": "我和我的朋友学习中文。" }
 response: { "text": "我跟朋友学中文。" }
 ```
 Graded via `TranslationGrader` (LLM) → `{correct, score 0..1, feedback (English, ≤ 2 sentences), corrected}`.
-`sourceLang`: alternate between `de` and `en`.
+`AnswerResult.expected` is the answer plus `corrected`: `{ "reference": "…", "corrected": "…" }`.
+A response equal to the reference (ignoring punctuation and spaces) is correct without calling the LLM.
+`sourceLang`: alternate between `de` and `en` (by the number of TRANSLATION exercises stored for the lesson);
+the LLM writes both translations and code picks one. `hintWords`: the target words the reference uses.
 
 ## LLM generation
 
@@ -93,8 +99,11 @@ public interface ExerciseGenerator {
 }
 ```
 
+- `count` is per type. Each call to the model asks for the missing count with that many target words.
 - **Target words**: the lesson's words, spread evenly; words with the fewest stored exercises of the requested
-  type first (count via `exercise_word`).
+  type first (count via `exercise_word`, ties in random order).
+- An exercise practises (`exercise_word`) the target words its Chinese sentence contains; one that contains none is
+  discarded. `generated_by` is the model name. Model: `hanzi.llm.exercise-model` (default `claude-sonnet-5-5`).
 - **Allowed words**: all words in the vocabulary **except** those that appear only in lessons of the same textbook
   with a higher `lesson_no`, plus a fixed whitelist of basic function words
   (`的 了 是 不 很 吗 呢 也 都 和 在 我 你 他 她 们 这 那 个 有`) and numerals (`一 二 三 四 五 六 七 八 九 十 两 百`).
@@ -110,7 +119,8 @@ LLMs ignore vocabulary constraints, so check in code:
 - Build the set of characters from all allowed words.
 - Every CJK character in a generated sentence must be in that set (punctuation ignored).
 - Exercises failing the check are discarded; regenerate the missing count up to 2 more times;
-  report `rejected` count in the generation job.
+  report `rejected` count in the generation job. Accepted exercises are stored at once, so a job that fails
+  later keeps them.
 
 Also discard: duplicate sentences (vs. stored exercises for this lesson), `FILL_BLANK` whose correct
 option is not in the options or whose blank count ≠ 1, `WORD_ORDER` whose tokens ≠ any accepted order's multiset.
@@ -122,8 +132,9 @@ option is not in the options or whose blank count ≠ 1, `WORD_ORDER` whose toke
 - LLM types are only taken from stored exercises (generation is a separate, explicit action).
 - Mix types; never two exercises for the same word back-to-back (unless only one word is left).
 - Each word/type pair appears at most once per session; a lesson with fewer pairs than `size` gives a shorter
-  session. `size` defaults to `hanzi.exercises.default-session-size` (15); `types` defaults to the types the
-  player supports (M6: `HANZI_TO_MEANING`, `TONE`, `MEANING_TO_HANZI`).
+  session. A stored sentence exercise counts for all its words: per type, a random exercise is taken for a word
+  and none of its words is used again. `size` defaults to `hanzi.exercises.default-session-size` (15); `types`
+  defaults to the types the player supports (M7: all six).
 - A stored code-generated exercise whose answer or prompt no longer matches its word (meaning edited) is deleted
   and regenerated.
 - Answers in free practice are graded but not stored.

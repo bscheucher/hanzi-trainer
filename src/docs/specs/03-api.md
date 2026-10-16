@@ -104,6 +104,9 @@ GenerationJobDto   { id, status: 'RUNNING'|'DONE'|'FAILED', created: number, rej
 ```
 
 Generation jobs may be held in memory (map of job id → status) in v1; no table needed.
+`POST …/generate`: `types` only `FILL_BLANK`, `WORD_ORDER`, `TRANSLATION` (400 otherwise); `count` 1–20 **per type**;
+400 if the lesson has no words; 503 if the LLM is not configured. `created` / `rejected` are exercise counts so far.
+`POST /exercises/{id}/answer` for `TRANSLATION` calls the LLM (503 if not configured).
 
 ## Review (SRS)
 

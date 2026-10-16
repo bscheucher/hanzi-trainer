@@ -92,7 +92,7 @@ public class CodeExerciseGenerator {
         return switch (codec.answer(exercise)) {
             case ExerciseAnswer.HanziToMeaning a -> !Objects.equals(a.correct(), word.getMeaningEn());
             case ExerciseAnswer.Tone a -> !a.tones().equals(ToneSyllables.of(word.getPinyinNumbered()).tones());
-            case ExerciseAnswer.MeaningToHanzi ignored -> throw new IllegalStateException("checked by type above");
+            default -> throw new IllegalStateException(exercise.getType() + " is not code-generated");
         };
     }
 

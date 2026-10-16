@@ -94,7 +94,7 @@ hanzi:
   llm:
     provider: ${HANZI_LLM_PROVIDER:anthropic}                 # anthropic | ollama
     extraction-model: ${HANZI_EXTRACTION_MODEL:claude-opus-5-5}  # Ollama: a vision model, e.g. gemma3:4b
-    exercise-model: <model name>                              # M7
+    exercise-model: ${HANZI_EXERCISE_MODEL:claude-sonnet-5-5}  # sentence exercises + translation grading
   extraction:
     max-image-px: 2576   # Claude's high-resolution limit (long edge); the client resizes to the same value
     timeout: 120s        # per model call; local models on modest hardware may need more on a cold start
@@ -115,6 +115,8 @@ Model names are configuration, never hard-coded.
 - One `ChatClient` per purpose, built in `LlmConfig` from that `ChatModel` with the model name and `maxTokens`
   as default options: extraction now, exercises in M7. Current Claude models always think, so `maxTokens` is
   generous (16k), and no `temperature` is set (Claude Opus 5.5 rejects sampling parameters).
+- Structured replies use native structured output via `common/StructuredReply`, not `responseEntity`: a thinking
+  model returns the thinking block as the first generation (empty text), and `responseEntity` only parses the first.
 - If the selected provider is not configured (e.g. no `ANTHROPIC_API_KEY`), the app still starts; LLM endpoints
   return `503` with a ProblemDetail explaining which setting is missing.
 
