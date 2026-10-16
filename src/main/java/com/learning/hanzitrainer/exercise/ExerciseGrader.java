@@ -73,6 +73,9 @@ public class ExerciseGrader {
             throw new BadRequestException("MEANING_TO_HANZI response needs \"strokeMistakes\" and \"skipped\"");
         }
         JsonNode hanzi = response.get("hanzi");
+        if (hanzi != null && !hanzi.isNull() && !hanzi.isString()) {
+            throw new BadRequestException("\"hanzi\" must be a string");
+        }
         if (hanzi != null && !hanzi.isNull() && !prompt.hanzi().equals(hanzi.asString())) {
             throw new BadRequestException("Response is for " + hanzi.asString() + ", not " + prompt.hanzi());
         }
@@ -80,11 +83,11 @@ public class ExerciseGrader {
         if (skipped == null || !skipped.isBoolean()) {
             throw new BadRequestException("MEANING_TO_HANZI response needs a boolean \"skipped\"");
         }
-        int hintsUsed = nonNegative(response.get("hintsUsed"), "hintsUsed");
         if (skipped.asBoolean()) {
             return new AnswerResult(false, 0, expected, "Skipped: " + prompt.hanzi() + " (" + prompt.pinyin() + ").",
-                    1);
+                    SuggestedRating.writing(0, durationMs, 0, 0));
         }
+        int hintsUsed = nonNegative(response.get("hintsUsed"), "hintsUsed");
         JsonNode mistakes = response.get("strokeMistakes");
         if (mistakes == null || !mistakes.isArray() || mistakes.size() != prompt.characterCount()) {
             throw new BadRequestException("MEANING_TO_HANZI response needs \"strokeMistakes\" with "

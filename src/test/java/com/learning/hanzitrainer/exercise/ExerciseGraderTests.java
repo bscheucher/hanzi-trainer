@@ -103,6 +103,15 @@ class ExerciseGraderTests {
     }
 
     @Test
+    void aSkipIgnoresTheOtherCounters() {
+        AnswerResult result = grader.grade(writing, response(
+                "{\"strokeMistakes\": [0], \"hintsUsed\": -1, \"skipped\": true}"), 2_000);
+
+        assertThat(result.correct()).isFalse();
+        assertThat(result.suggestedRating()).isEqualTo(1);
+    }
+
+    @Test
     void handwritingResponsesOfTheWrongShapeAreRejected() {
         assertThatThrownBy(() -> grader.grade(writing, response("{\"strokeMistakes\": [0, 0]}"), 1))
                 .isInstanceOf(BadRequestException.class).hasMessageContaining("skipped");
@@ -113,6 +122,9 @@ class ExerciseGraderTests {
         assertThatThrownBy(() -> grader.grade(writing,
                 response("{\"hanzi\": \"老师\", \"strokeMistakes\": [0, 0], \"skipped\": false}"), 1))
                 .isInstanceOf(BadRequestException.class).hasMessageContaining("老师");
+        assertThatThrownBy(() -> grader.grade(writing,
+                response("{\"hanzi\": [\"朋\", \"友\"], \"strokeMistakes\": [0, 0], \"skipped\": false}"), 1))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("string");
     }
 
     @Test
