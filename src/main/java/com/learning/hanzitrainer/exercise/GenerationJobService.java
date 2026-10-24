@@ -10,9 +10,11 @@ import com.learning.hanzitrainer.word.LessonWordRepository;
 import com.learning.hanzitrainer.word.WordDto;
 import com.learning.hanzitrainer.word.WordRepository;
 import jakarta.annotation.PreDestroy;
+import org.hibernate.exception.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -35,15 +37,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Generates sentence exercises for a lesson in the background (spec 07, "LLM generation"; spec 03). Jobs are held
  * in memory only. Per type, the count is asked for in calls of at most {@link #MAX_PER_CALL}; exercises that fail a
  * check are discarded and the missing count is asked for again, within a budget of {@link #maxCalls} calls (the
- * calls the count needs plus {@link #RETRIES}). Each accepted exercise is stored right away. Jobs for the same
- * lesson run one after another, so concurrent jobs do not store the same sentence twice. An unreadable reply (e.g. JSON cut
- * off at the token limit) counts as one rejection and is retried the same way.
+ * calls the count needs plus {@link #RETRIES}). Each accepted exercise is stored right away. A sentence is unique
+ * per lesson and type in the database, so a sentence a concurrent job stored first is a rejection too. An unreadable
+ * reply (e.g. JSON cut off at the token limit) counts as one rejection and is retried the same way.
  */
 @Service
 public class GenerationJobService {
@@ -59,6 +60,8 @@ public class GenerationJobService {
     private static final Logger log = LoggerFactory.getLogger(GenerationJobService.class);
     private static final int MAX_ERROR_LENGTH = 500;
     private static final String INTERRUPTED = "Interrupted by shutdown";
+    /** The unique index on {@code exercise (lesson_id, type, sentence)}. */
+    private static final String SENTENCE_UNIQUE = "exercise_lesson_type_sentence_uq";
 
     private final LessonRepository lessons;
     private final LessonWordRepository lessonWords;
@@ -72,7 +75,6 @@ public class GenerationJobService {
     private final Random random;
     private final Clock clock;
     private final Map<Long, Job> jobs = new ConcurrentHashMap<>();
-    private final Map<Long, ReentrantLock> lessonLocks = new ConcurrentHashMap<>();
     private volatile boolean stopping;
     private final AtomicLong ids = new AtomicLong();
 
@@ -158,15 +160,6 @@ public class GenerationJobService {
     }
 
     private void run(Job job, long lessonId, List<ExerciseType> types, int count) {
-        // Jobs for the same lesson run one after another, so each sees the sentences the other stored.
-        ReentrantLock lock = lessonLocks.computeIfAbsent(lessonId, id -> new ReentrantLock());
-        try {
-            lock.lockInterruptibly(); // shutdownNow() interrupts a job still waiting for the lesson
-        } catch (InterruptedException e) {
-            job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
-            Thread.currentThread().interrupt();
-            return;
-        }
         try {
             stopIfStopping();
             AllowedWords allowed = tx.execute(s -> allowedWords(lessonId));
@@ -190,8 +183,6 @@ public class GenerationJobService {
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             job.finish(GenerationJobDto.Status.FAILED,
                     message.length() > MAX_ERROR_LENGTH ? message.substring(0, MAX_ERROR_LENGTH) : message, clock);
-        } finally {
-            lock.unlock();
         }
     }
 
@@ -238,12 +229,33 @@ public class GenerationJobService {
                 continue;
             }
             stopIfStopping(); // no JDBC on an interrupted thread
-            tx.executeWithoutResult(s -> store(lessonId, type, result.built()));
+            try {
+                tx.executeWithoutResult(s -> store(lessonId, type, result.built()));
+            } catch (DataIntegrityViolationException e) {
+                if (!isSentenceConflict(e)) {
+                    throw e;
+                }
+                // A job running at the same time stored this sentence first (unique per lesson and type).
+                log.info("Generation job {}: rejected {} exercise, duplicate sentence {} (stored concurrently)",
+                        job.id, type, result.built().sentence());
+                job.rejected.incrementAndGet();
+                continue;
+            }
             context.stored(result.built());
             stored++;
             job.created.incrementAndGet();
         }
         return stored;
+    }
+
+    /** Whether {@code e} is the unique index on (lesson, type, sentence) from migration V2. */
+    private static boolean isSentenceConflict(DataIntegrityViolationException e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException c && SENTENCE_UNIQUE.equals(c.getConstraintName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void stopIfStopping() {
@@ -274,13 +286,14 @@ public class GenerationJobService {
         List<WordDto> lessonWordList = lessonWords.findWordsOfLesson(lessonId).stream().map(WordDto::from).toList();
         List<Exercise> existing = exercises.findByLessonIdAndTypeOrderById(lessonId, type);
         Set<String> sentences = new HashSet<>();
-        existing.forEach(e -> sentences.add(GeneratedExercises.sentenceOf(codec.answer(e))));
+        existing.forEach(e -> sentences.add(e.getSentence()));
         return new Context(lessonWordList, stored, sentences, existing.size());
     }
 
     private void store(long lessonId, ExerciseType type, GeneratedExercises.Built built) {
         Exercise exercise = exercises.save(new Exercise(lessons.getReferenceById(lessonId), type,
-                codec.toJson(built.prompt()), codec.toJson(built.answer()), generator.modelName()));
+                codec.toJson(built.prompt()), codec.toJson(built.answer()), built.sentence(),
+                generator.modelName()));
         for (WordDto word : built.words()) {
             exerciseWords.save(new ExerciseWord(exercise, words.getReferenceById(word.id())));
         }

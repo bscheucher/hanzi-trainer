@@ -104,7 +104,8 @@ GenerationJobDto   { id, status: 'RUNNING'|'DONE'|'FAILED', created: number, rej
 ```
 
 Generation jobs may be held in memory (map of job id → status) in v1; no table needed. A finished job can be polled
-for an hour, then `GET` returns 404. Jobs for the same lesson run one after another.
+for an hour, then `GET` returns 404. Jobs for the same lesson may run at the same time; the database keeps their
+sentences unique (spec 02), and a sentence another job stored first counts as `rejected`.
 `POST …/generate`: `types` only `FILL_BLANK`, `WORD_ORDER`, `TRANSLATION` (400 otherwise); `count` 1–20 **per type**;
 400 if the lesson has no words; 503 if the LLM is not configured. `created` / `rejected` are exercise counts so far.
 `POST /exercises/{id}/answer` for `TRANSLATION` calls the LLM (503 if not configured).

@@ -132,7 +132,8 @@ LLMs ignore vocabulary constraints, so check in code:
   limit) counts as one rejection and is retried the same way. Accepted exercises are stored at once, so a job that fails
   later keeps them.
 
-Also discard: duplicate sentences (vs. stored exercises for this lesson), `FILL_BLANK` whose correct
+Also discard: duplicate sentences (vs. stored exercises for this lesson and type; the unique index on
+`exercise (lesson_id, type, sentence)` also catches one a concurrent job stored first), `FILL_BLANK` whose correct
 option is not in the options or whose blank count ≠ 1, `WORD_ORDER` whose tokens ≠ any accepted order's multiset.
 
 ## Practice session

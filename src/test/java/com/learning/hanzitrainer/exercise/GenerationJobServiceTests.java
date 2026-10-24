@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -256,8 +257,15 @@ class GenerationJobServiceTests {
 
     @Test
     void concurrentJobsForALessonDoNotStoreTheSameSentenceTwice() {
+        CountDownLatch bothAsked = new CountDownLatch(2);
         generator.willAnswer(call -> {
-            sleep(200); // without the per-lesson lock both jobs would read the stored sentences before either stores
+            // Both jobs have loaded the stored sentences before either stores: only the database can tell.
+            bothAsked.countDown();
+            try {
+                bothAsked.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             return List.of(fillBlank("我和我的___去学校。", "朋友"));
         });
 
@@ -267,7 +275,11 @@ class GenerationJobServiceTests {
                 && jobs.get(second).status() != GenerationJobDto.Status.RUNNING);
 
         assertThat(exercises.list(fx.lesson1, ExerciseType.FILL_BLANK)).hasSize(1);
+        assertThat(List.of(jobs.get(first), jobs.get(second))).extracting(GenerationJobDto::status)
+                .containsOnly(GenerationJobDto.Status.DONE);
         assertThat(jobs.get(first).created() + jobs.get(second).created()).isEqualTo(1);
+        // the other job's sentence conflicts in its first call and both retries
+        assertThat(jobs.get(first).rejected() + jobs.get(second).rejected()).isEqualTo(1 + GenerationJobService.RETRIES);
     }
 
     @Test
@@ -301,7 +313,7 @@ class GenerationJobServiceTests {
     }
 
     @Test
-    void shutdownFailsAJobWaitingForItsLessonAndRefusesNewOnes() {
+    void shutdownStopsARunningJobWithoutStoringItsLateReplyAndRefusesNewOnes() {
         CountDownLatch release = new CountDownLatch(1);
         generator.willAnswer(call -> {
             try {
@@ -314,14 +326,12 @@ class GenerationJobServiceTests {
         GenerationJobService service = service(Clock.systemUTC());
         long running = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
         await().atMost(Duration.ofSeconds(10)).until(() -> generator.calls().size() == 1);
-        long waiting = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
 
         service.shutdown();
 
-        await().atMost(Duration.ofSeconds(10)).until(() -> service.get(running).status() != GenerationJobDto.Status.RUNNING
-                && service.get(waiting).status() != GenerationJobDto.Status.RUNNING);
+        await().atMost(Duration.ofSeconds(10))
+                .until(() -> service.get(running).status() != GenerationJobDto.Status.RUNNING);
         assertThat(service.get(running).error()).isEqualTo("Interrupted by shutdown"); // no retry after the interrupt
-        assertThat(service.get(waiting).error()).isEqualTo("Interrupted by shutdown");
         assertThat(generator.calls()).hasSize(1);
         assertThat(exercises.list(fx.lesson1, ExerciseType.FILL_BLANK)).isEmpty(); // the late reply is not stored
         assertThatThrownBy(() -> service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)))
@@ -375,14 +385,6 @@ class GenerationJobServiceTests {
         await().atMost(Duration.ofSeconds(10))
                 .until(() -> jobs.get(id).status() != GenerationJobDto.Status.RUNNING);
         return jobs.get(id);
-    }
-
-    private static void sleep(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     private static GenerateExercisesRequest request(ExerciseType type) {

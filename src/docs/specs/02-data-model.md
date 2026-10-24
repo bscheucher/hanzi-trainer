@@ -13,7 +13,7 @@ This file explains intent and invariants. Changes go into new migrations.
 | `cedict_entry` | Read-only reference dictionary |
 | `word` | Master vocabulary, unique `(hanzi, pinyin_numbered)` |
 | `lesson_word` | Which words a lesson introduces, plus example sentence |
-| `exercise` | Stored exercise with `prompt` and `answer` JSON |
+| `exercise` | Stored exercise with `prompt` and `answer` JSON; `sentence` for sentence types (V2) |
 | `exercise_word` | Words an exercise practises |
 | `review_card` | FSRS state per word per skill |
 | `review_log` | Every rating ever given |
@@ -29,6 +29,10 @@ This file explains intent and invariants. Changes go into new migrations.
 5. Deleting a lesson removes `lesson_word` and exercises, but **not** `word` rows (they may belong to
    other lessons). Orphaned words remain and stay in review until deleted via `DELETE /api/words/{id}`.
 6. `word.pinyin_numbered` is always lowercase; `word.pinyin` may keep a capital for proper nouns.
+7. `exercise.sentence` is the Chinese sentence of a `FILL_BLANK` (`fullSentence`), `WORD_ORDER` (the first accepted
+   order joined) or `TRANSLATION` (`reference`) exercise, and null for the other types (CHECK). It is unique per
+   `(lesson_id, type)` (partial unique index), so the database rejects duplicate sentences, also from generation
+   jobs running at the same time.
 
 ## JPA mapping notes
 

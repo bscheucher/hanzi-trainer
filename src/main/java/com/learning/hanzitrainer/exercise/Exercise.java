@@ -43,6 +43,9 @@ public class Exercise {
     @Column(nullable = false)
     private JsonNode answer;
 
+    /** The Chinese sentence of a sentence exercise, unique per lesson and type; null for the other types. */
+    private String sentence;
+
     /** {@code "code"} or the model name. */
     @Column(name = "generated_by", nullable = false)
     private String generatedBy;
@@ -54,10 +57,17 @@ public class Exercise {
     }
 
     public Exercise(Lesson lesson, ExerciseType type, JsonNode prompt, JsonNode answer, String generatedBy) {
+        this(lesson, type, prompt, answer, null, generatedBy);
+    }
+
+    /** @param sentence set for sentence exercises only (see {@link #getSentence()}) */
+    public Exercise(Lesson lesson, ExerciseType type, JsonNode prompt, JsonNode answer, String sentence,
+                    String generatedBy) {
         this.lesson = lesson;
         this.type = type;
         this.prompt = prompt;
         this.answer = answer;
+        this.sentence = sentence;
         this.generatedBy = generatedBy;
     }
 
@@ -66,6 +76,7 @@ public class Exercise {
     public ExerciseType getType() { return type; }
     public JsonNode getPrompt() { return prompt; }
     public JsonNode getAnswer() { return answer; }
+    public String getSentence() { return sentence; }
     public String getGeneratedBy() { return generatedBy; }
     public Instant getCreatedAt() { return createdAt; }
 }

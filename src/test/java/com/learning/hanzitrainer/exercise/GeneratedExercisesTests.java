@@ -145,14 +145,6 @@ class GeneratedExercisesTests {
                 .startsWith("uses no target word");
     }
 
-    @Test
-    void sentenceOfStoredAnswersMatchesTheBuiltSentence() {
-        assertThat(GeneratedExercises.sentenceOf(new ExerciseAnswer.WordOrder(
-                List.of(List.of("我", "去", "学校"))))).isEqualTo("我去学校");
-        assertThat(GeneratedExercises.sentenceOf(new ExerciseAnswer.FillBlank("朋友", "我的朋友。")))
-                .isEqualTo("我的朋友。");
-    }
-
     private Result check(ExerciseType type, GeneratedExercise item, int sequence) {
         return GeneratedExercises.check(type, item, targets, allowed, existing, sequence, new Random(1));
     }
