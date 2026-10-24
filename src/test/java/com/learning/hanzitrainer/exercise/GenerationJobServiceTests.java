@@ -141,6 +141,20 @@ class GenerationJobServiceTests {
     }
 
     @Test
+    void aRetryStillPrefersTheWordWithFewestExercisesOverOnesNotTargetedYet() {
+        generator.willAnswer(call -> List.of(new GeneratedExercise.Translation("de", "en", "我去学校。"),
+                new GeneratedExercise.Translation("de", "en", "他去学校。"),
+                new GeneratedExercise.Translation("de", "en", "你去学校。")));
+        run(List.of(ExerciseType.TRANSLATION), 3); // all three targeted: 去 and 学校 get 3 exercises, 朋友 none
+        generator.reset();
+
+        run(List.of(ExerciseType.TRANSLATION), 1); // the fake returns nothing: three calls
+
+        assertThat(generator.calls()).extracting(call -> call.targetWords().getFirst().hanzi())
+                .containsExactly("朋友", "朋友", "朋友");
+    }
+
+    @Test
     void aRetryAsksOnlyForTheMissingCountAndPrefersWordsWithoutExercises() {
         AtomicInteger round = new AtomicInteger();
         generator.willAnswer(call -> round.getAndIncrement() == 0

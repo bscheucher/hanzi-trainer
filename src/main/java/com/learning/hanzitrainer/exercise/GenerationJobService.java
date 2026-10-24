@@ -39,10 +39,10 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Generates sentence exercises for a lesson in the background (spec 07, "LLM generation"; spec 03). Jobs are held
- * in memory only. Per type, exercises that fail a check are discarded and the missing count is asked for again, at
- * most {@link #RETRIES} more times, in calls of at most {@link #MAX_PER_CALL} and at most {@link #maxCalls} per type;
- * each accepted exercise is stored right away. Jobs for the same lesson run one
- * after another, so concurrent jobs do not store the same sentence twice. An unreadable reply (e.g. JSON cut
+ * in memory only. Per type, the count is asked for in calls of at most {@link #MAX_PER_CALL}; exercises that fail a
+ * check are discarded and the missing count is asked for again, within a budget of {@link #maxCalls} calls (the
+ * calls the count needs plus {@link #RETRIES}). Each accepted exercise is stored right away. Jobs for the same
+ * lesson run one after another, so concurrent jobs do not store the same sentence twice. An unreadable reply (e.g. JSON cut
  * off at the token limit) counts as one rejection and is retried the same way.
  */
 @Service
@@ -175,14 +175,13 @@ public class GenerationJobService {
             }
             job.finish(GenerationJobDto.Status.DONE, null, clock);
         } catch (RuntimeException | Error e) {
-            if (e instanceof Stopped) {
-                log.info("Generation job {} for lesson {} stopped by shutdown", job.id, lessonId);
-                job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
-                return;
-            }
-            if (stopping) {
-                // Most likely the HTTP client's reaction to the interrupt, but keep the cause in the log.
-                log.info("Generation job {} for lesson {} failed during shutdown", job.id, lessonId, e);
+            if (stopping && !(e instanceof Error)) {
+                // Stopped, or most likely the HTTP client's reaction to the interrupt: keep that cause in the log.
+                if (e instanceof Stopped) {
+                    log.info("Generation job {} for lesson {} stopped by shutdown", job.id, lessonId);
+                } else {
+                    log.info("Generation job {} for lesson {} failed during shutdown", job.id, lessonId, e);
+                }
                 job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
                 return;
             }
@@ -307,8 +306,8 @@ public class GenerationJobService {
         }
 
         /**
-         * Words with the fewest stored exercises of the type first, ties in random order; words already targeted
-         * in this job come last until every word was, so a call that stores nothing does not starve the others.
+         * Words with the fewest stored exercises of the type first; among equals, words not yet targeted in this job
+         * (until every word was), then random order. So a call that stores nothing does not starve the others.
          */
         List<WordDto> targets(int needed, Random random) {
             if (targeted.size() >= lessonWords.size()) {
@@ -316,8 +315,8 @@ public class GenerationJobService {
             }
             List<WordDto> sorted = new ArrayList<>(lessonWords);
             Collections.shuffle(sorted, random);
-            sorted.sort(Comparator.<WordDto>comparingInt(w -> targeted.contains(w.id()) ? 1 : 0)
-                    .thenComparingInt(w -> stored.getOrDefault(w.id(), 0)));
+            sorted.sort(Comparator.<WordDto>comparingInt(w -> stored.getOrDefault(w.id(), 0))
+                    .thenComparingInt(w -> targeted.contains(w.id()) ? 1 : 0));
             List<WordDto> targets = List.copyOf(sorted.subList(0, Math.min(needed, sorted.size())));
             targets.forEach(w -> targeted.add(w.id()));
             return targets;

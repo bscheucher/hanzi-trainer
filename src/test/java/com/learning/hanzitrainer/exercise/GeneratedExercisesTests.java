@@ -69,9 +69,10 @@ class GeneratedExercisesTests {
     }
 
     @Test
-    void wordOrderKeepsSymbolTokens() {
+    void wordOrderKeepsSymbolTokensButDropsInvisibleOnes() {
         Result result = GeneratedExercises.check(ExerciseType.WORD_ORDER, new GeneratedExercise.WordOrder(
-                List.of(List.of("朋友", "去", "学校", "～", "。")), "x"), targets, allowed, existing, 0, new Random(1));
+                List.of(List.of("朋友", "去", "学校", "～", "。", "\uFE0F", "\u200B")), "x"), targets, allowed,
+                existing, 0, new Random(1));
 
         assertThat(((ExercisePrompt.WordOrder) result.built().prompt()).tokens())
                 .containsExactlyInAnyOrder("朋友", "去", "学校", "～");
