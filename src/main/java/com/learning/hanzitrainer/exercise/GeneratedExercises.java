@@ -93,16 +93,6 @@ final class GeneratedExercises {
                 .toList();
     }
 
-    /** The Chinese sentence of a stored sentence exercise, as {@link Built#sentence()}. */
-    static String sentenceOf(ExerciseAnswer answer) {
-        return switch (answer) {
-            case ExerciseAnswer.FillBlank a -> a.fullSentence();
-            case ExerciseAnswer.WordOrder a -> String.join("", a.accepted().getFirst());
-            case ExerciseAnswer.Translation a -> a.reference();
-            default -> throw new IllegalArgumentException(answer + " is not a sentence exercise");
-        };
-    }
-
     private static Result fillBlank(GeneratedExercise.FillBlank item, Random random) {
         String correct = trim(item.correct());
         String translation = trim(item.translationEn());
