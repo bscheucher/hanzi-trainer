@@ -24,7 +24,6 @@ final class GeneratedExercises {
     static final String BLANK = "___";
     /** Models write blanks of any length, sometimes with full-width underscores. */
     private static final Pattern ANY_BLANK = Pattern.compile("[_＿]{2,}");
-    private static final Pattern PUNCTUATION_ONLY = Pattern.compile("[\\p{P}\\s]+");
     private static final int DISTRACTORS = 3;
     private static final int SHUFFLE_ATTEMPTS = 20;
 
@@ -110,7 +109,7 @@ final class GeneratedExercises {
         if (item.sentence() == null || correct.isEmpty() || translation.isEmpty()) {
             return Result.rejected("incomplete FILL_BLANK");
         }
-        String sentence = ANY_BLANK.matcher(item.sentence().trim()).replaceAll(BLANK);
+        String sentence = ANY_BLANK.matcher(item.sentence().strip()).replaceAll(BLANK);
         int blanks = sentence.split(Pattern.quote(BLANK), -1).length - 1;
         if (blanks != 1) {
             return Result.rejected("FILL_BLANK needs exactly one blank, not " + blanks + ": " + sentence);
@@ -177,18 +176,18 @@ final class GeneratedExercises {
 
     /** Tokens without blanks and punctuation-only entries, e.g. a separate "。" at the end. */
     private static List<String> tokens(List<String> order) {
-        return trimmed(order).stream().filter(t -> !PUNCTUATION_ONLY.matcher(t).matches()).toList();
+        return trimmed(order).stream().filter(t -> !Punctuation.remove(t).isEmpty()).toList();
     }
 
     private static List<String> trimmed(Collection<String> values) {
         if (values == null) {
             return List.of();
         }
-        return values.stream().filter(Objects::nonNull).map(String::trim).filter(s -> !s.isEmpty()).toList();
+        return values.stream().filter(Objects::nonNull).map(String::strip).filter(s -> !s.isEmpty()).toList();
     }
 
     private static String trim(String value) {
-        return value == null ? "" : value.trim();
+        return value == null ? "" : value.strip();
     }
 
     private static Result ok(ExercisePrompt prompt, ExerciseAnswer answer, String sentence, List<WordDto> words) {

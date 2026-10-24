@@ -1,7 +1,5 @@
 package com.learning.hanzitrainer.exercise;
 
-import com.learning.hanzitrainer.cedict.HanziText;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -12,7 +10,7 @@ import java.util.stream.Collectors;
 
 /**
  * The words generated sentences may use (spec 07, "Allowed words"), and the check that they really do: LLMs ignore
- * vocabulary constraints, so every Chinese character of a sentence must come from one of these words.
+ * vocabulary constraints, so every character of a sentence but punctuation must come from one of these words.
  */
 final class AllowedWords {
 
@@ -59,10 +57,13 @@ final class AllowedWords {
         return segments;
     }
 
-    /** The Chinese characters of {@code text} that no allowed word contains, sorted; punctuation is ignored. */
+    /**
+     * The characters of {@code text} that no allowed word contains, sorted; punctuation and spaces are ignored. So
+     * Latin letters and digits only pass when a vocabulary word has them (卡拉OK); numbers are written 三, not 3.
+     */
     Set<String> disallowedCharacters(String text) {
         return text.codePoints()
-                .filter(HanziText::isCjk)
+                .filter(cp -> !Punctuation.is(cp))
                 .filter(cp -> !characters.contains(cp))
                 .mapToObj(Character::toString)
                 .collect(Collectors.toCollection(TreeSet::new));

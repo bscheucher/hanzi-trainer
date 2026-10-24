@@ -55,7 +55,7 @@ class GeneratedExercisesTests {
     void wordOrderDropsPunctuationTokensAndNeverShowsAnAcceptedOrder() {
         for (int seed = 0; seed < 20; seed++) {
             Result result = GeneratedExercises.check(ExerciseType.WORD_ORDER, new GeneratedExercise.WordOrder(
-                    List.of(List.of("我", "明天", "去", "学校", "。"), List.of("明天", "我", "去", "学校")),
+                    List.of(List.of("我", "明天", "去", "学校　", "。", "　"), List.of("明天", "我", "去", "学校")),
                     "I will go to school tomorrow."), targets, allowed, existing, 0, new Random(seed));
 
             ExercisePrompt.WordOrder prompt = (ExercisePrompt.WordOrder) result.built().prompt();

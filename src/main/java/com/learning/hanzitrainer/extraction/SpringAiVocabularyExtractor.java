@@ -1,11 +1,10 @@
 package com.learning.hanzitrainer.extraction;
 
+import com.learning.hanzitrainer.common.LlmUsage;
 import com.learning.hanzitrainer.common.StructuredReply;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.metadata.Usage;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.util.MimeTypeUtils;
@@ -34,24 +33,12 @@ public class SpringAiVocabularyExtractor implements VocabularyExtractor {
                 .system(systemPrompt)
                 .user(u -> u.text(USER_TEXT).media(MimeTypeUtils.IMAGE_JPEG, new ByteArrayResource(jpegImage))),
                 ExtractionResult.class);
-        logUsage(reply.response());
+        LlmUsage.log(log, "Extraction", modelName, reply.response());
         ExtractionResult result = reply.entity();
         if (result == null) {
             throw new IllegalStateException("Model " + modelName + " returned no extraction result");
         }
         return result;
-    }
-
-    /** Token usage per page, to see what extraction costs; providers may omit some counts. */
-    private void logUsage(ChatResponse response) {
-        Usage usage = response == null ? null : response.getMetadata().getUsage();
-        if (usage == null) {
-            log.info("Extraction with {}: no token usage reported", modelName);
-            return;
-        }
-        String model = response.getMetadata().getModel();
-        log.info("Extraction with {}: {} input tokens, {} output tokens", model == null || model.isBlank()
-                ? modelName : model, usage.getPromptTokens(), usage.getCompletionTokens());
     }
 
     @Override

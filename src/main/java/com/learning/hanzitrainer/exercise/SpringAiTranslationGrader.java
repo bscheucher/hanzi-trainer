@@ -1,5 +1,6 @@
 package com.learning.hanzitrainer.exercise;
 
+import com.learning.hanzitrainer.common.LlmUsage;
 import com.learning.hanzitrainer.common.StructuredReply;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

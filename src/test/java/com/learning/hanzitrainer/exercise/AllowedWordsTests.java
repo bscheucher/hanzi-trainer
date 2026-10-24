@@ -13,7 +13,14 @@ class AllowedWordsTests {
     @Test
     void charactersOfVocabularyAndBasicWordsAreAllowedAndPunctuationIgnored() {
         assertThat(allowed.disallowedCharacters("我和我的朋友去学校。")).isEmpty();
-        assertThat(allowed.disallowedCharacters("“你好！”, AA 3")).containsExactly("好");
+        assertThat(allowed.disallowedCharacters("“你好！”, 我　去")).containsExactly("好"); // U+3000 is a space
+    }
+
+    @Test
+    void lettersAndDigitsOnlyPassWhenAVocabularyWordHasThem() {
+        assertThat(allowed.disallowedCharacters("我有3个朋友, OK")).containsExactly("3", "K", "O");
+        assertThat(allowed.disallowedCharacters("我有３个朋友")).containsExactly("３");
+        assertThat(new AllowedWords(List.of("卡拉OK")).disallowedCharacters("卡拉OK。")).isEmpty();
     }
 
     @Test
