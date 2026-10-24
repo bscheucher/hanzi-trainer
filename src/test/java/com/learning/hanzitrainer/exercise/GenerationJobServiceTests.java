@@ -135,6 +135,9 @@ class GenerationJobServiceTests {
         assertThat(job.created()).isZero();
         assertThat(job.rejected()).isEqualTo(3);
         assertThat(generator.calls()).hasSize(1 + GenerationJobService.RETRIES);
+        // each retry targets a word not tried yet, not the same least-practised one again
+        assertThat(generator.calls()).extracting(call -> call.targetWords().getFirst().hanzi())
+                .containsExactlyInAnyOrder("朋友", "学校", "去");
     }
 
     @Test
@@ -160,9 +163,10 @@ class GenerationJobServiceTests {
         GenerationJobDto job = run(List.of(ExerciseType.FILL_BLANK), 12);
 
         assertThat(job.rejected()).isZero();
-        // the fake returns nothing: every round asks for all 12 again, as 5 + 5 + 2
+        // the fake returns nothing: the first round asks for 5 + 5 + 2, then the 2 retry calls are used up
         assertThat(generator.calls()).extracting(FakeExerciseGenerator.Call::count)
-                .containsExactly(5, 5, 2, 5, 5, 2, 5, 5, 2);
+                .containsExactly(5, 5, 2, 5, 5);
+        assertThat(GenerationJobService.maxCalls(12)).isEqualTo(5);
     }
 
     @Test

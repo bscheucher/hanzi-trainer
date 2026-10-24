@@ -31,8 +31,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,8 +40,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Generates sentence exercises for a lesson in the background (spec 07, "LLM generation"; spec 03). Jobs are held
  * in memory only. Per type, exercises that fail a check are discarded and the missing count is asked for again, at
- * most {@link #RETRIES} more times, in calls of at most {@link #MAX_PER_CALL}; each accepted exercise is stored right
- * away. Jobs for the same lesson run one
+ * most {@link #RETRIES} more times, in calls of at most {@link #MAX_PER_CALL} and at most {@link #maxCalls} per type;
+ * each accepted exercise is stored right away. Jobs for the same lesson run one
  * after another, so concurrent jobs do not store the same sentence twice. An unreadable reply (e.g. JSON cut
  * off at the token limit) counts as one rejection and is retried the same way.
  */
@@ -136,8 +136,11 @@ public class GenerationJobService {
     }
 
     public GenerationJobDto get(long id) {
-        evictFinished();
         Job job = jobs.get(id);
+        if (job != null && job.expired(clock.instant().minus(KEEP_FINISHED))) {
+            jobs.remove(id); // start() evicts the others
+            job = null;
+        }
         if (job == null) {
             throw new NotFoundException("Generation job", id);
         }
@@ -147,7 +150,7 @@ public class GenerationJobService {
     /** Evicts jobs that finished more than {@link #KEEP_FINISHED} ago, so the map does not grow forever. */
     private void evictFinished() {
         Instant cutoff = clock.instant().minus(KEEP_FINISHED);
-        jobs.values().removeIf(job -> job.finishedAt != null && job.finishedAt.isBefore(cutoff));
+        jobs.values().removeIf(job -> job.expired(cutoff));
     }
 
     private void run(Job job, long lessonId, List<ExerciseType> types, int count) {
@@ -167,6 +170,12 @@ public class GenerationJobService {
             }
             job.finish(GenerationJobDto.Status.DONE, null, clock);
         } catch (RuntimeException | Error e) {
+            if (e instanceof Interrupted || Thread.currentThread().isInterrupted()) {
+                // shutdownNow(), whichever exception the HTTP client turned the interrupt into: not a failure
+                log.info("Generation job {} for lesson {} interrupted by shutdown", job.id, lessonId);
+                job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
+                return;
+            }
             // An Error too: otherwise the job would stay RUNNING and the frontend would poll forever.
             log.warn("Generation job {} for lesson {} failed", job.id, lessonId, e);
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
@@ -179,21 +188,25 @@ public class GenerationJobService {
 
     private void generate(Job job, long lessonId, ExerciseType type, int count, AllowedWords allowed) {
         Context context = tx.execute(s -> context(lessonId, type));
+        int calls = maxCalls(count);
         int needed = count;
-        for (int attempt = 0; attempt <= RETRIES && needed > 0; attempt++) {
+        for (int attempt = 0; attempt <= RETRIES && needed > 0 && calls > 0; attempt++) {
             // The missing count, split into calls of at most MAX_PER_CALL so each reply stays short enough for
             // the HTTP timeout.
-            for (int left = needed; left > 0 && needed > 0; left -= MAX_PER_CALL) {
+            for (int left = needed; left > 0 && needed > 0 && calls > 0; left -= MAX_PER_CALL, calls--) {
                 needed -= call(job, lessonId, type, Math.min(left, MAX_PER_CALL), context, allowed);
             }
         }
     }
 
+    /** The calls one type may make: enough for {@code count}, plus {@link #RETRIES} to make up for rejections. */
+    static int maxCalls(int count) {
+        return (count + MAX_PER_CALL - 1) / MAX_PER_CALL + RETRIES;
+    }
+
     /** One call to the model; returns how many of the {@code asked} exercises were stored. */
     private int call(Job job, long lessonId, ExerciseType type, int asked, Context context, AllowedWords allowed) {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new IllegalStateException(INTERRUPTED); // shutdownNow(): make no further paid calls
-        }
+        stopIfInterrupted(); // shutdownNow(): make no further paid calls
         List<WordDto> targets = context.targets(asked, random);
         List<GeneratedExercise> items;
         try {
@@ -203,6 +216,7 @@ public class GenerationJobService {
             job.rejected.incrementAndGet();
             return 0;
         }
+        stopIfInterrupted(); // no JDBC on an interrupted thread
         int stored = 0;
         for (GeneratedExercise item : items) {
             if (stored == asked) {
@@ -221,6 +235,20 @@ public class GenerationJobService {
             job.created.incrementAndGet();
         }
         return stored;
+    }
+
+    private static void stopIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new Interrupted();
+        }
+    }
+
+    /** The job was interrupted by {@link #shutdown()}. */
+    private static final class Interrupted extends RuntimeException {
+
+        Interrupted() {
+            super(INTERRUPTED);
+        }
     }
 
     private AllowedWords allowedWords(long lessonId) {
@@ -258,6 +286,7 @@ public class GenerationJobService {
         private final List<WordDto> lessonWords;
         private final Map<Long, Integer> stored;
         private final Set<String> sentences;
+        private final Set<Long> targeted = new HashSet<>();
         private int sequence;
 
         Context(List<WordDto> lessonWords, Map<Long, Integer> stored, Set<String> sentences, int sequence) {
@@ -267,12 +296,21 @@ public class GenerationJobService {
             this.sequence = sequence;
         }
 
-        /** Words with the fewest stored exercises of the type first, ties in random order. */
+        /**
+         * Words with the fewest stored exercises of the type first, ties in random order; words already targeted
+         * in this job come last until every word was, so a call that stores nothing does not starve the others.
+         */
         List<WordDto> targets(int needed, Random random) {
+            if (targeted.size() >= lessonWords.size()) {
+                targeted.clear();
+            }
             List<WordDto> sorted = new ArrayList<>(lessonWords);
             Collections.shuffle(sorted, random);
-            sorted.sort(Comparator.comparingInt(w -> stored.getOrDefault(w.id(), 0)));
-            return List.copyOf(sorted.subList(0, Math.min(needed, sorted.size())));
+            sorted.sort(Comparator.<WordDto>comparingInt(w -> targeted.contains(w.id()) ? 1 : 0)
+                    .thenComparingInt(w -> stored.getOrDefault(w.id(), 0)));
+            List<WordDto> targets = List.copyOf(sorted.subList(0, Math.min(needed, sorted.size())));
+            targets.forEach(w -> targeted.add(w.id()));
+            return targets;
         }
 
         Set<String> sentences() {
@@ -301,6 +339,10 @@ public class GenerationJobService {
 
         Job(long id) {
             this.id = id;
+        }
+
+        boolean expired(Instant cutoff) {
+            return finishedAt != null && finishedAt.isBefore(cutoff);
         }
 
         void finish(GenerationJobDto.Status status, String error, Clock clock) {

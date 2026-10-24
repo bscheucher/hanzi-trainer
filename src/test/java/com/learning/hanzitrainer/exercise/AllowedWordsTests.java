@@ -20,7 +20,7 @@ class AllowedWordsTests {
     void lettersAndDigitsOnlyPassWhenAVocabularyWordHasThem() {
         assertThat(allowed.disallowedCharacters("我有3个朋友, OK")).containsExactly("3", "K", "O");
         assertThat(allowed.disallowedCharacters("我有３个朋友")).containsExactly("３");
-        assertThat(allowed.disallowedCharacters("朋友～ ￥ % 🙂")).isEmpty(); // symbols count as punctuation
+        assertThat(allowed.disallowedCharacters("朋友～ ￥ % 🙂 ❤️ 👨‍👩‍👧")).isEmpty(); // symbols count as punctuation
         assertThat(new AllowedWords(List.of("卡拉OK")).disallowedCharacters("卡拉OK。")).isEmpty();
     }
 

@@ -58,9 +58,9 @@ final class AllowedWords {
     }
 
     /**
-     * The characters of {@code text} that no allowed word contains, sorted; punctuation, symbols and spaces are ignored.
-     * So
-     * Latin letters and digits only pass when a vocabulary word has them (卡拉OK); numbers are written 三, not 3.
+     * The characters of {@code text} that no allowed word contains, sorted; punctuation, symbols and spaces are
+     * ignored. So Latin letters and digits only pass when a vocabulary word has them (卡拉OK); numbers are written
+     * 三, not 3.
      */
     Set<String> disallowedCharacters(String text) {
         return text.codePoints()
