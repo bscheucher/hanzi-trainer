@@ -205,6 +205,16 @@ class ExerciseGraderTests {
     }
 
     @Test
+    void fullWidthSpacesFromAnImeAreIgnoredToo() {
+        AnswerResult result = grader.grade(translation, response("{\"text\": \"　我和我的朋友　学习中文　\"}"),
+                20_000);
+
+        assertThat(gradedAnswers).isEmpty();
+        assertThat(result.correct()).isTrue();
+        assertThat(result.expected().get("corrected").asString()).isEqualTo("我和我的朋友　学习中文");
+    }
+
+    @Test
     void translationNeedsTextAndAConfiguredLlm() {
         assertThatThrownBy(() -> grader.grade(translation, response("{\"text\": \"  \"}"), 1))
                 .isInstanceOf(BadRequestException.class);

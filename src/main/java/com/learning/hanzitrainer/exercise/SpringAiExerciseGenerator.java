@@ -1,5 +1,6 @@
 package com.learning.hanzitrainer.exercise;
 
+import com.learning.hanzitrainer.common.LlmUsage;
 import com.learning.hanzitrainer.common.StructuredReply;
 import com.learning.hanzitrainer.common.UnreadableReplyException;
 import com.learning.hanzitrainer.word.WordDto;

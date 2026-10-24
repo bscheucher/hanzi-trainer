@@ -26,9 +26,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.node.JsonNodeFactory;
 
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -205,6 +212,60 @@ class GenerationJobServiceTests {
     }
 
     @Test
+    void concurrentJobsForALessonDoNotStoreTheSameSentenceTwice() {
+        generator.willAnswer(call -> {
+            sleep(200); // without the per-lesson lock both jobs would read the stored sentences before either stores
+            return List.of(fillBlank("我和我的___去学校。", "朋友"));
+        });
+
+        long first = jobs.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+        long second = jobs.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+        await().atMost(Duration.ofSeconds(10)).until(() -> jobs.get(first).status() != GenerationJobDto.Status.RUNNING
+                && jobs.get(second).status() != GenerationJobDto.Status.RUNNING);
+
+        assertThat(exercises.list(fx.lesson1, ExerciseType.FILL_BLANK)).hasSize(1);
+        assertThat(jobs.get(first).created() + jobs.get(second).created()).isEqualTo(1);
+    }
+
+    @Test
+    void finishedJobsAreForgottenAfterAnHour(@Autowired LessonRepository lessons,
+                                             @Autowired LessonWordRepository lessonWords, @Autowired WordRepository words,
+                                             @Autowired ExerciseRepository exerciseRepository,
+                                             @Autowired ExerciseWordRepository exerciseWords,
+                                             @Autowired ExerciseCodec codec, @Autowired TransactionTemplate tx) {
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-24T10:00:00Z"));
+        Clock clock = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return now.get();
+            }
+        };
+        GenerationJobService service = new GenerationJobService(lessons, lessonWords, words, exerciseRepository,
+                exerciseWords, codec, generator, tx, Executors.newVirtualThreadPerTaskExecutor(), new Random(1),
+                clock);
+        long old = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+        await().atMost(Duration.ofSeconds(10))
+                .until(() -> service.get(old).status() != GenerationJobDto.Status.RUNNING);
+
+        now.set(now.get().plus(GenerationJobService.KEEP_FINISHED).plusSeconds(1));
+        long recent = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+
+        assertThatThrownBy(() -> service.get(old)).isInstanceOf(NotFoundException.class);
+        assertThat(service.get(recent)).isNotNull();
+        service.shutdown();
+    }
+
+    @Test
     void aSessionTakesOneStoredSentenceExercisePerWord() {
         generator.willAnswer(call -> List.of(fillBlank("我和我的___去学校。", "朋友"), fillBlank("___去学校。", "朋友"),
                 fillBlank("我和朋友___。", "学校")));
@@ -248,6 +309,14 @@ class GenerationJobServiceTests {
         await().atMost(Duration.ofSeconds(10))
                 .until(() -> jobs.get(id).status() != GenerationJobDto.Status.RUNNING);
         return jobs.get(id);
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static GenerateExercisesRequest request(ExerciseType type) {

@@ -1,16 +1,16 @@
-package com.learning.hanzitrainer.exercise;
+package com.learning.hanzitrainer.common;
 
 import org.slf4j.Logger;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 
-/** Logs the token usage of one model call, to see what generation and grading cost; providers may omit counts. */
-final class LlmUsage {
+/** Logs the token usage of one model call, to see what each LLM use costs; providers may omit counts. */
+public final class LlmUsage {
 
     private LlmUsage() {
     }
 
-    static void log(Logger log, String purpose, String modelName, ChatResponse response) {
+    public static void log(Logger log, String purpose, String modelName, ChatResponse response) {
         Usage usage = response == null ? null : response.getMetadata().getUsage();
         if (usage == null) {
             log.info("{} with {}: no token usage reported", purpose, modelName);

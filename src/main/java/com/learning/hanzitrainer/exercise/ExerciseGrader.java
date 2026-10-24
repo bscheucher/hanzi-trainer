@@ -8,7 +8,6 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * Grading per type (spec 07): deterministic wherever possible, handwriting from the Hanzi Writer quiz result, and
@@ -19,8 +18,6 @@ public class ExerciseGrader {
 
     /** A character with more mistakes than this fails (spec 07). */
     static final int MAX_MISTAKES_PER_CHARACTER = 3;
-    /** Ignored when comparing a translation with the reference. */
-    private static final Pattern PUNCTUATION_AND_SPACE = Pattern.compile("[\\p{P}\\s]");
 
     private final ExerciseCodec codec;
     private final TranslationGrader translationGrader;
@@ -99,7 +96,7 @@ public class ExerciseGrader {
         if (text == null || !text.isString() || text.asString().isBlank()) {
             throw new BadRequestException("TRANSLATION response needs a non-empty string \"text\"");
         }
-        String given = text.asString().trim();
+        String given = text.asString().strip();
         ObjectNode withCorrection = (ObjectNode) expected.deepCopy();
         if (normalise(given).equals(normalise(answer.reference()))) {
             withCorrection.put("corrected", given);
@@ -115,8 +112,9 @@ public class ExerciseGrader {
                 SuggestedRating.of(score, durationMs));
     }
 
+    /** Punctuation and spaces are ignored when comparing a translation with the reference. */
     private static String normalise(String chinese) {
-        return PUNCTUATION_AND_SPACE.matcher(chinese).replaceAll("");
+        return Punctuation.remove(chinese);
     }
 
     private static AnswerResult hanziToMeaning(ExercisePrompt.HanziToMeaning prompt, ExerciseAnswer.HanziToMeaning answer,

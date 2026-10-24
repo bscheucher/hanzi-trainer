@@ -119,7 +119,9 @@ public interface ExerciseGenerator {
 
 LLMs ignore vocabulary constraints, so check in code:
 - Build the set of characters from all allowed words.
-- Every CJK character in a generated sentence must be in that set (punctuation ignored).
+- Every character in a generated sentence (and `FILL_BLANK` option) must be in that set; punctuation and spaces,
+  including full-width ones, are ignored. So Latin letters and digits only pass when a vocabulary word has them
+  (卡拉OK): numbers are written with the numerals, not `3`.
 - Exercises failing the check are discarded; regenerate the missing count up to 2 more times;
   report `rejected` count in the generation job. A reply that cannot be read (e.g. JSON cut off at the token
   limit) counts as one rejection and is retried the same way. Accepted exercises are stored at once, so a job that fails

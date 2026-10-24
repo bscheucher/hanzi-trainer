@@ -52,41 +52,52 @@ public class LlmConfig {
         return new SpringAiVocabularyExtractor(extractionChatClient, prompt, model);
     }
 
+    /**
+     * The chat client for exercises, shared by generation and translation grading.
+     *
+     * @param client  null when {@code missing} is set
+     * @param missing which setting is missing, or null
+     */
+    record ExerciseChat(ChatClient client, String model, String missing) {
+    }
+
     @Bean
-    ExerciseGenerator exerciseGenerator(ObjectProvider<ChatModel> chatModels, HanziProperties properties,
-                                        @Value("${spring.ai.anthropic.api-key:}") String anthropicApiKey,
+    ExerciseChat exerciseChat(ObjectProvider<ChatModel> chatModels, HanziProperties properties,
+                              @Value("${spring.ai.anthropic.api-key:}") String anthropicApiKey) {
+        String provider = properties.llm().provider();
+        String model = properties.llm().exerciseModel();
+        String missing = missingSetting(provider, anthropicApiKey, chatModels.getIfUnique());
+        if (missing != null) {
+            log.warn("Exercise generation and translation grading unavailable: {}", missing);
+            return new ExerciseChat(null, model, missing);
+        }
+        log.info("Exercise generation and translation grading use {} model {}", provider, model);
+        return new ExerciseChat(ChatClient.builder(chatModels.getObject())
+                .defaultOptions(ChatOptions.builder().model(model).maxTokens(EXERCISE_MAX_TOKENS))
+                .build(), model, null);
+    }
+
+    @Bean
+    ExerciseGenerator exerciseGenerator(ExerciseChat chat,
                                         @Value("classpath:prompts/gen-fill-blank.st") Resource fillBlank,
                                         @Value("classpath:prompts/gen-word-order.st") Resource wordOrder,
                                         @Value("classpath:prompts/gen-translation.st") Resource translation) {
-        String missing = missingSetting(properties.llm().provider(), anthropicApiKey, chatModels.getIfUnique());
-        if (missing != null) {
-            log.warn("Exercise generation unavailable: {}", missing);
-            return new UnavailableExerciseGenerator(missing);
+        if (chat.missing() != null) {
+            return new UnavailableExerciseGenerator(chat.missing());
         }
-        String model = properties.llm().exerciseModel();
-        log.info("Exercise generation uses {} model {}", properties.llm().provider(), model);
-        return new SpringAiExerciseGenerator(exerciseChatClient(chatModels.getObject(), model), Map.of(
+        return new SpringAiExerciseGenerator(chat.client(), Map.of(
                 ExerciseType.FILL_BLANK, fillBlank,
                 ExerciseType.WORD_ORDER, wordOrder,
-                ExerciseType.TRANSLATION, translation), model);
+                ExerciseType.TRANSLATION, translation), chat.model());
     }
 
     @Bean
-    TranslationGrader translationGrader(ObjectProvider<ChatModel> chatModels, HanziProperties properties,
-                                        @Value("${spring.ai.anthropic.api-key:}") String anthropicApiKey,
+    TranslationGrader translationGrader(ExerciseChat chat,
                                         @Value("classpath:prompts/grade-translation.st") Resource prompt) {
-        String missing = missingSetting(properties.llm().provider(), anthropicApiKey, chatModels.getIfUnique());
-        if (missing != null) {
-            return new UnavailableTranslationGrader(missing);
+        if (chat.missing() != null) {
+            return new UnavailableTranslationGrader(chat.missing());
         }
-        String model = properties.llm().exerciseModel();
-        return new SpringAiTranslationGrader(exerciseChatClient(chatModels.getObject(), model), prompt, model);
-    }
-
-    private static ChatClient exerciseChatClient(ChatModel chatModel, String model) {
-        return ChatClient.builder(chatModel)
-                .defaultOptions(ChatOptions.builder().model(model).maxTokens(EXERCISE_MAX_TOKENS))
-                .build();
+        return new SpringAiTranslationGrader(chat.client(), prompt, chat.model());
     }
 
     private static String missingSetting(String provider, String anthropicApiKey, ChatModel chatModel) {
