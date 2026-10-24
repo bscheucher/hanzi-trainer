@@ -69,6 +69,19 @@ public class CodeExerciseGenerator {
     }
 
     /** A new, unsaved exercise for {@code word}; empty if the word cannot be asked as {@code type}. */
+    /**
+     * An exercise to grade an answer against, not to show (reviews, spec 09): HANZI_TO_MEANING without distractors,
+     * so no queries run; the other types as {@link #generate}, without a lesson.
+     */
+    public Optional<Exercise> forGrading(ExerciseType type, Word word) {
+        if (type == ExerciseType.HANZI_TO_MEANING && canGenerate(type, word)) {
+            return Optional.of(new Exercise(null, type,
+                    codec.toJson(new ExercisePrompt.HanziToMeaning(word.getHanzi(), List.of(word.getMeaningEn()))),
+                    codec.toJson(new ExerciseAnswer.HanziToMeaning(word.getMeaningEn())), GENERATED_BY));
+        }
+        return generate(type, word, null, List.of());
+    }
+
     public Optional<Exercise> generate(ExerciseType type, Word word, Lesson lesson, List<Word> lessonWords) {
         if (!canGenerate(type, word)) {
             return Optional.empty();

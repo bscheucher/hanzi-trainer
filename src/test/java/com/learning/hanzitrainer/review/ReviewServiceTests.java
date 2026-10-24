@@ -139,6 +139,20 @@ class ReviewServiceTests {
     }
 
     @Test
+    void theRatedCardFollowsItsOwnLearningStepWhileItsSiblingsWait() {
+        confirm("朋友", "péngyou", "friend");
+        ReviewService reviews = service(15);
+        long again = reviews.due(30).getFirst().cardId();
+        reviews.rate(again, 1); // Again: due in 1 minute
+
+        clock.advance(Duration.ofMinutes(2));
+
+        assertThat(reviews.due(30)).extracting(ReviewItemDto::cardId).containsExactly(again);
+        clock.advance(Duration.ofMinutes(9)); // siblings free again after 10 minutes
+        assertThat(reviews.due(30)).extracting(ReviewItemDto::cardId).hasSize(1); // still one card per word
+    }
+
+    @Test
     void theIntervalAPreviewShowsIsTheOneTheRatingSchedules() {
         confirmThree();
         ReviewService reviews = service(15);

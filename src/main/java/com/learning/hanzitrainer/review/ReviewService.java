@@ -99,7 +99,8 @@ public class ReviewService {
 
     /**
      * Cards due now: LEARNING / RELEARNING first, then REVIEW (each by due), then NEW (by word creation, lesson), at
-     * most one per word, none of a word rated in the last {@link #SIBLING_PAUSE}, NEW ones up to today's limit.
+     * most one per word, none whose sibling (another card of the word) was rated in the last {@link #SIBLING_PAUSE},
+     * NEW ones up to today's limit. The rated card itself follows its own due (learning steps of 1 and 10 min).
      */
     @Transactional(readOnly = true)
     public List<ReviewItemDto> due(int limit) {
@@ -108,14 +109,16 @@ public class ReviewService {
         }
         Instant now = clock.instant();
         Set<Long> fillBlankWords = exerciseWords.findWordIdsWithType(ExerciseType.FILL_BLANK);
-        Set<Long> paused = logs.findWordIdsRatedSince(now.minus(SIBLING_PAUSE));
-        long newLeft = newAllowance(now);
-        Map<Long, Integer> lessonNos = new HashMap<>();
+        Map<Long, Set<Long>> ratedByWord = new HashMap<>();
+        logs.findRatedSince(now.minus(SIBLING_PAUSE))
+                .forEach(r -> ratedByWord.computeIfAbsent(r.wordId(), w -> new HashSet<>()).add(r.cardId()));
+        long newLeft = newAllowance(startOfDay(now));
+        Map<Long, Integer> lessonNos = firstLessonNos();
 
         List<ReviewCard> candidates = cards.findAllWithWord().stream()
                 .filter(c -> !c.getDue().isAfter(now))
                 .filter(c -> askable(c, fillBlankWords))
-                .filter(c -> !paused.contains(c.getWord().getId()))
+                .filter(c -> !siblingRated(c, ratedByWord))
                 .sorted(queueOrder(lessonNos))
                 .toList();
         List<ReviewItemDto> items = new ArrayList<>();
@@ -151,7 +154,7 @@ public class ReviewService {
                         + "card " + cardId);
             }
         } else {
-            exercise = codeExercise(card)
+            exercise = generator.forGrading(exerciseType(card.getCardType()), card.getWord())
                     .orElseThrow(() -> new BadRequestException("Card " + cardId + " cannot be asked"));
         }
         return grader.grade(exercise, request.response(), request.durationMs());
@@ -190,13 +193,15 @@ public class ReviewService {
     public ReviewStatsDto stats() {
         Instant now = clock.instant();
         ZoneId zone = settings.timeZone();
-        Instant startOfDay = LocalDate.now(clock.withZone(zone)).atStartOfDay(zone).toInstant();
-        Instant endOfDay = LocalDate.now(clock.withZone(zone)).plusDays(1).atStartOfDay(zone).toInstant();
+        LocalDate today = now.atZone(zone).toLocalDate();
+        Instant startOfDay = today.atStartOfDay(zone).toInstant();
+        Instant endOfDay = today.plusDays(1).atStartOfDay(zone).toInstant();
         List<ReviewCard> all = cards.findAllWithWord();
         Set<Long> fillBlankWords = exerciseWords.findWordIdsWithType(ExerciseType.FILL_BLANK);
         List<ReviewCard> askable = all.stream().filter(c -> askable(c, fillBlankWords)).toList();
 
-        long newLeft = Math.min(newAllowance(now), askable.stream().filter(c -> c.getState() == CardState.NEW).count());
+        long newLeft = Math.min(newAllowance(startOfDay),
+                askable.stream().filter(c -> c.getState() == CardState.NEW).count());
         long dueNow = dueBefore(askable, now, true, newLeft);
         long dueToday = dueBefore(askable, endOfDay, false, newLeft);
 
@@ -223,7 +228,7 @@ public class ReviewService {
             throw new BadRequestException("days must be 1.." + MAX_FORECAST_DAYS);
         }
         ZoneId zone = settings.timeZone();
-        LocalDate today = LocalDate.now(clock.withZone(zone));
+        LocalDate today = clock.instant().atZone(zone).toLocalDate();
         Set<Long> fillBlankWords = exerciseWords.findWordIdsWithType(ExerciseType.FILL_BLANK);
         Map<LocalDate, Long> counts = new LinkedHashMap<>();
         for (int d = 0; d < days; d++) {
@@ -239,23 +244,29 @@ public class ReviewService {
     }
 
     /** New cards that may still be introduced today: the daily limit minus NEW cards rated since local midnight. */
-    private long newAllowance(Instant now) {
-        ZoneId zone = settings.timeZone();
-        Instant startOfDay = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant();
+    private long newAllowance(Instant startOfDay) {
         long introduced = logs.countRatedSince(CardState.NEW, startOfDay);
         return Math.max(0, settings.newPerDay() - introduced);
     }
 
+    private Instant startOfDay(Instant now) {
+        ZoneId zone = settings.timeZone();
+        return now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant();
+    }
+
     /** Scheduled cards due at or before {@code until} (strictly before when {@code inclusive} is false), plus NEW. */
     private static long dueBefore(List<ReviewCard> askable, Instant until, boolean inclusive, long newLeft) {
-        long scheduled = askable.stream()
-                .filter(c -> c.getState() != CardState.NEW)
-                .filter(c -> inclusive ? !c.getDue().isAfter(until) : c.getDue().isBefore(until))
-                .count();
-        long newDue = askable.stream()
-                .filter(c -> c.getState() == CardState.NEW)
-                .filter(c -> inclusive ? !c.getDue().isAfter(until) : c.getDue().isBefore(until))
-                .count();
+        long scheduled = 0;
+        long newDue = 0;
+        for (ReviewCard card : askable) {
+            if (inclusive ? !card.getDue().isAfter(until) : card.getDue().isBefore(until)) {
+                if (card.getState() == CardState.NEW) {
+                    newDue++;
+                } else {
+                    scheduled++;
+                }
+            }
+        }
         return scheduled + Math.min(newLeft, newDue);
     }
 
@@ -267,14 +278,25 @@ public class ReviewService {
         });
         return byGroup.thenComparing((a, b) -> a.getState() == CardState.NEW
                 ? Comparator.<ReviewCard, Instant>comparing(c -> c.getWord().getCreatedAt())
-                        .thenComparingInt(c -> lessonNos.computeIfAbsent(c.getWord().getId(), this::firstLessonNo))
+                        .thenComparingInt(c -> lessonNos.getOrDefault(c.getWord().getId(), Integer.MAX_VALUE))
                         .thenComparing(ReviewCard::getId)
                         .compare(a, b)
                 : Comparator.comparing(ReviewCard::getDue).thenComparing(ReviewCard::getId).compare(a, b));
     }
 
-    private int firstLessonNo(long wordId) {
-        return firstLesson(wordId).map(Lesson::getLessonNo).orElse(Integer.MAX_VALUE);
+    /** Each word's first lesson number (textbook, then lesson), in one query. */
+    private Map<Long, Integer> firstLessonNos() {
+        Map<Long, Integer> lessonNos = new HashMap<>();
+        for (Object[] row : lessonWords.findLessonNosOfWords()) {
+            lessonNos.putIfAbsent((Long) row[0], (Integer) row[1]);
+        }
+        return lessonNos;
+    }
+
+    /** Whether another card of the card's word was rated within the sibling pause. */
+    private static boolean siblingRated(ReviewCard card, Map<Long, Set<Long>> ratedByWord) {
+        Set<Long> rated = ratedByWord.get(card.getWord().getId());
+        return rated != null && rated.stream().anyMatch(id -> !id.equals(card.getId()));
     }
 
     private ReviewItemDto item(ReviewCard card, Instant now) {
@@ -302,11 +324,16 @@ public class ReviewService {
         return new ExerciseDto(null, built.getType(), built.getPrompt(), List.of(word.getId()));
     }
 
+    /** The exercise to show; only HANZI_TO_MEANING needs the lesson, for distractors from its words. */
     private Optional<Exercise> codeExercise(ReviewCard card) {
         Word word = card.getWord();
+        ExerciseType type = exerciseType(card.getCardType());
+        if (type != ExerciseType.HANZI_TO_MEANING) {
+            return generator.generate(type, word, null, List.of());
+        }
         Optional<Lesson> lesson = firstLesson(word.getId());
         List<Word> lessonWordList = lesson.map(l -> lessonWords.findWordsOfLesson(l.getId())).orElse(List.of());
-        return generator.generate(exerciseType(card.getCardType()), word, lesson.orElse(null), lessonWordList);
+        return generator.generate(type, word, lesson.orElse(null), lessonWordList);
     }
 
     /** The word's first lesson (textbook, lesson number), or empty for a word no lesson lists any more. */

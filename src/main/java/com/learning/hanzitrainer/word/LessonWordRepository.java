@@ -15,4 +15,10 @@ public interface LessonWordRepository extends JpaRepository<LessonWord, LessonWo
             select lw from LessonWord lw join fetch lw.lesson l join fetch l.textbook t
             where lw.word.id = :wordId order by t.id, l.lessonNo""")
     List<LessonWord> findLinksOfWord(@Param("wordId") long wordId);
+
+    /** Every word's lessons as {@code [wordId, lessonNo]}, in the order of {@link #findLinksOfWord}. */
+    @Query("""
+            select lw.word.id, l.lessonNo from LessonWord lw join lw.lesson l join l.textbook t
+            order by t.id, l.lessonNo""")
+    List<Object[]> findLessonNosOfWords();
 }
