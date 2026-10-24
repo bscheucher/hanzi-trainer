@@ -31,14 +31,11 @@ public record HanziProperties(
      * @param provider        {@code anthropic} or {@code ollama}; also selects Spring AI's chat model
      * @param extractionModel vision-capable model name for the configured provider
      * @param exerciseModel   model that writes sentence exercises and grades translations (spec 07)
-     * @param httpTimeout     HTTP timeout of every model call ({@code spring.ai.anthropic.timeout},
-     *                        {@code spring.http.clients.read-timeout}); generation has no other timeout
      */
     public record Llm(
             @DefaultValue("anthropic") String provider,
             @DefaultValue("claude-opus-5-5") String extractionModel,
-            @DefaultValue("claude-sonnet-5-5") String exerciseModel,
-            @DefaultValue("300s") Duration httpTimeout) {
+            @DefaultValue("claude-sonnet-5-5") String exerciseModel) {
     }
 
     /**

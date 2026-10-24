@@ -33,6 +33,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -60,6 +61,20 @@ class GenerationJobServiceTests {
     private CedictImporter importer;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private LessonRepository lessons;
+    @Autowired
+    private LessonWordRepository lessonWords;
+    @Autowired
+    private WordRepository words;
+    @Autowired
+    private ExerciseRepository exerciseRepository;
+    @Autowired
+    private ExerciseWordRepository exerciseWords;
+    @Autowired
+    private ExerciseCodec codec;
+    @Autowired
+    private TransactionTemplate tx;
 
     @TempDir
     Path dir;
@@ -120,6 +135,23 @@ class GenerationJobServiceTests {
         assertThat(job.created()).isZero();
         assertThat(job.rejected()).isEqualTo(3);
         assertThat(generator.calls()).hasSize(1 + GenerationJobService.RETRIES);
+        // each retry targets a word not tried yet, not the same least-practised one again
+        assertThat(generator.calls()).extracting(call -> call.targetWords().getFirst().hanzi())
+                .containsExactlyInAnyOrder("朋友", "学校", "去");
+    }
+
+    @Test
+    void aRetryStillPrefersTheWordWithFewestExercisesOverOnesNotTargetedYet() {
+        generator.willAnswer(call -> List.of(new GeneratedExercise.Translation("de", "en", "我去学校。"),
+                new GeneratedExercise.Translation("de", "en", "他去学校。"),
+                new GeneratedExercise.Translation("de", "en", "你去学校。")));
+        run(List.of(ExerciseType.TRANSLATION), 3); // all three targeted: 去 and 学校 get 3 exercises, 朋友 none
+        generator.reset();
+
+        run(List.of(ExerciseType.TRANSLATION), 1); // the fake returns nothing: three calls
+
+        assertThat(generator.calls()).extracting(call -> call.targetWords().getFirst().hanzi())
+                .containsExactly("朋友", "朋友", "朋友");
     }
 
     @Test
@@ -138,6 +170,17 @@ class GenerationJobServiceTests {
         List<String> first = generator.calls().get(0).targetWords().stream().map(WordDto::hanzi).toList();
         assertThat(generator.calls().get(1).targetWords()).extracting(WordDto::hanzi)
                 .hasSize(1).doesNotContainAnyElementsOf(first);
+    }
+
+    @Test
+    void aLargeCountIsAskedForInCallsOfAtMostFive() {
+        GenerationJobDto job = run(List.of(ExerciseType.FILL_BLANK), 12);
+
+        assertThat(job.rejected()).isZero();
+        // the fake returns nothing: the first round asks for 5 + 5 + 2, then the 2 retry calls are used up
+        assertThat(generator.calls()).extracting(FakeExerciseGenerator.Call::count)
+                .containsExactly(5, 5, 2, 5, 5);
+        assertThat(GenerationJobService.maxCalls(12)).isEqualTo(5);
     }
 
     @Test
@@ -228,13 +271,9 @@ class GenerationJobServiceTests {
     }
 
     @Test
-    void finishedJobsAreForgottenAfterAnHour(@Autowired LessonRepository lessons,
-                                             @Autowired LessonWordRepository lessonWords, @Autowired WordRepository words,
-                                             @Autowired ExerciseRepository exerciseRepository,
-                                             @Autowired ExerciseWordRepository exerciseWords,
-                                             @Autowired ExerciseCodec codec, @Autowired TransactionTemplate tx) {
+    void finishedJobsAreForgottenAfterAnHour() {
         AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-24T10:00:00Z"));
-        Clock clock = new Clock() {
+        GenerationJobService service = service(new Clock() {
             @Override
             public ZoneId getZone() {
                 return ZoneOffset.UTC;
@@ -249,20 +288,44 @@ class GenerationJobServiceTests {
             public Instant instant() {
                 return now.get();
             }
-        };
-        GenerationJobService service = new GenerationJobService(lessons, lessonWords, words, exerciseRepository,
-                exerciseWords, codec, generator, tx, Executors.newVirtualThreadPerTaskExecutor(), new Random(1),
-                clock);
-        long old = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+        });
+        long id = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
         await().atMost(Duration.ofSeconds(10))
-                .until(() -> service.get(old).status() != GenerationJobDto.Status.RUNNING);
+                .until(() -> service.get(id).status() != GenerationJobDto.Status.RUNNING);
 
-        now.set(now.get().plus(GenerationJobService.KEEP_FINISHED).plusSeconds(1));
-        long recent = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
-
-        assertThatThrownBy(() -> service.get(old)).isInstanceOf(NotFoundException.class);
-        assertThat(service.get(recent)).isNotNull();
+        now.set(now.get().plus(GenerationJobService.KEEP_FINISHED).minusSeconds(1));
+        assertThat(service.get(id).status()).isEqualTo(GenerationJobDto.Status.DONE);
+        now.set(now.get().plusSeconds(2));
+        assertThatThrownBy(() -> service.get(id)).isInstanceOf(NotFoundException.class);
         service.shutdown();
+    }
+
+    @Test
+    void shutdownFailsAJobWaitingForItsLessonAndRefusesNewOnes() {
+        CountDownLatch release = new CountDownLatch(1);
+        generator.willAnswer(call -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                // like okio: the interrupt flag is cleared, and the call still returns a usable reply
+            }
+            return List.of(fillBlank("我和我的___去学校。", "朋友"));
+        });
+        GenerationJobService service = service(Clock.systemUTC());
+        long running = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+        await().atMost(Duration.ofSeconds(10)).until(() -> generator.calls().size() == 1);
+        long waiting = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
+
+        service.shutdown();
+
+        await().atMost(Duration.ofSeconds(10)).until(() -> service.get(running).status() != GenerationJobDto.Status.RUNNING
+                && service.get(waiting).status() != GenerationJobDto.Status.RUNNING);
+        assertThat(service.get(running).error()).isEqualTo("Interrupted by shutdown"); // no retry after the interrupt
+        assertThat(service.get(waiting).error()).isEqualTo("Interrupted by shutdown");
+        assertThat(generator.calls()).hasSize(1);
+        assertThat(exercises.list(fx.lesson1, ExerciseType.FILL_BLANK)).isEmpty(); // the late reply is not stored
+        assertThatThrownBy(() -> service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)))
+                .isInstanceOf(ServiceUnavailableException.class);
     }
 
     @Test
@@ -293,15 +356,18 @@ class GenerationJobServiceTests {
     }
 
     @Test
-    void anUnconfiguredLlmIs503(@Autowired LessonRepository lessons, @Autowired LessonWordRepository lessonWords,
-                                @Autowired WordRepository words, @Autowired ExerciseRepository exerciseRepository,
-                                @Autowired ExerciseWordRepository exerciseWords, @Autowired ExerciseCodec codec,
-                                @Autowired TransactionTemplate tx) {
+    void anUnconfiguredLlmIs503() {
         GenerationJobService unconfigured = new GenerationJobService(lessons, lessonWords, words, exerciseRepository,
                 exerciseWords, codec, new UnavailableExerciseGenerator("needs ANTHROPIC_API_KEY"), tx);
 
         assertThatThrownBy(() -> unconfigured.start(fx.lesson1, request(ExerciseType.FILL_BLANK)))
                 .isInstanceOf(ServiceUnavailableException.class).hasMessage("needs ANTHROPIC_API_KEY");
+    }
+
+    /** A service of its own, for tests that need a clock or shut it down. */
+    private GenerationJobService service(Clock clock) {
+        return new GenerationJobService(lessons, lessonWords, words, exerciseRepository, exerciseWords, codec,
+                generator, tx, Executors.newVirtualThreadPerTaskExecutor(), new Random(1), clock);
     }
 
     private GenerationJobDto run(List<ExerciseType> types, int count) {

@@ -174,9 +174,11 @@ final class GeneratedExercises {
         };
     }
 
-    /** Tokens without blanks and punctuation-only entries, e.g. a separate "。" at the end. */
+    /** Tokens without blanks and entries with nothing to see, e.g. a separate "。" at the end; "～" is kept. */
     private static List<String> tokens(List<String> order) {
-        return trimmed(order).stream().filter(t -> !Punctuation.remove(t).isEmpty()).toList();
+        return trimmed(order).stream()
+                .filter(t -> !t.codePoints().allMatch(Punctuation::isInvisibleOrPunctuation))
+                .toList();
     }
 
     private static List<String> trimmed(Collection<String> values) {

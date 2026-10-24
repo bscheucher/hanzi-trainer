@@ -69,6 +69,17 @@ class GeneratedExercisesTests {
     }
 
     @Test
+    void wordOrderKeepsSymbolTokensButDropsInvisibleOnes() {
+        Result result = GeneratedExercises.check(ExerciseType.WORD_ORDER, new GeneratedExercise.WordOrder(
+                List.of(List.of("朋友", "去", "学校", "～", "。", "\uFE0F", "\u200B")), "x"), targets, allowed,
+                existing, 0, new Random(1));
+
+        assertThat(((ExercisePrompt.WordOrder) result.built().prompt()).tokens())
+                .containsExactlyInAnyOrder("朋友", "去", "学校", "～");
+        assertThat(result.built().sentence()).isEqualTo("朋友去学校～");
+    }
+
+    @Test
     void wordOrdersMustUseTheSameTokensAndHaveAWrongOrder() {
         assertThat(check(ExerciseType.WORD_ORDER, new GeneratedExercise.WordOrder(
                 List.of(List.of("我", "去", "学校"), List.of("我", "明天", "去", "学校")), "x"), 0).rejection())

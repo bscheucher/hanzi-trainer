@@ -205,6 +205,17 @@ class ExerciseGraderTests {
     }
 
     @Test
+    void symbolsAreNotIgnoredWhenComparingWithTheReference() {
+        Exercise warm = new Exercise(null, ExerciseType.TRANSLATION,
+                codec.toJson(new ExercisePrompt.Translation("Heute hat es dreißig Grad.", "de", List.of())),
+                codec.toJson(new ExerciseAnswer.Translation("今天三十℃。")), "fake-model");
+
+        grader.grade(warm, response("{\"text\": \"今天三十\"}"), 20_000);
+
+        assertThat(gradedAnswers).containsExactly("今天三十"); // asked the LLM, not matched as the reference
+    }
+
+    @Test
     void fullWidthSpacesFromAnImeAreIgnoredToo() {
         AnswerResult result = grader.grade(translation, response("{\"text\": \"　我和我的朋友　学习中文　\"}"),
                 20_000);
