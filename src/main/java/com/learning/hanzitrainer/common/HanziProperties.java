@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.ZoneId;
 
 /** All {@code hanzi.*} settings (spec 01). */
 @ConfigurationProperties("hanzi")
@@ -13,7 +14,8 @@ public record HanziProperties(
         @DefaultValue Storage storage,
         @DefaultValue Llm llm,
         @DefaultValue Extraction extraction,
-        @DefaultValue Exercises exercises) {
+        @DefaultValue Exercises exercises,
+        @DefaultValue Review review) {
 
     /**
      * @param file            CC-CEDICT file, downloaded by the user (the app never downloads it)
@@ -61,5 +63,16 @@ public record HanziProperties(
 
     /** @param defaultSessionSize exercises per practice session when the request gives no size */
     public record Exercises(@DefaultValue("15") int defaultSessionSize) {
+    }
+
+    /**
+     * Spec 09, "Review flow".
+     *
+     * @param newPerDay new cards introduced per local day
+     * @param timeZone  what "today" means for the new-card limit and the dashboard
+     */
+    public record Review(
+            @DefaultValue("15") int newPerDay,
+            @DefaultValue("Europe/Vienna") ZoneId timeZone) {
     }
 }

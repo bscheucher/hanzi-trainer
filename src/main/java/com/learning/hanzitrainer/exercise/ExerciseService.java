@@ -56,7 +56,8 @@ public class ExerciseService {
         return exercises.findById(id).orElseThrow(() -> new NotFoundException("Exercise", id));
     }
 
-    static List<ExerciseDto> toDtos(List<Exercise> list, ExerciseWordRepository exerciseWords) {
+    /** DTOs with the ids of the words each exercise practises; also used for stored exercises in reviews. */
+    public static List<ExerciseDto> toDtos(List<Exercise> list, ExerciseWordRepository exerciseWords) {
         Map<Long, List<Long>> wordIds = new HashMap<>();
         if (!list.isEmpty()) {
             for (ExerciseWord ew : exerciseWords.findByExerciseIds(list.stream().map(Exercise::getId).toList())) {
