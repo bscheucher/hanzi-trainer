@@ -110,6 +110,31 @@ class GeneratedExercisesTests {
     }
 
     @Test
+    void aTargetCountsOnlyAsAWholeWordOfTheSentence() {
+        WordDto study = word(4, "学", "xué", "to study");
+        AllowedWords vocabulary = new AllowedWords(List.of("学", "学校", "去"));
+
+        assertThat(vocabulary.segment("我去学校。")).containsExactly("我", "去", "学校", "。");
+        assertThat(GeneratedExercises.practisedWords("我去学校。", List.of(study, SCHOOL), vocabulary))
+                .containsExactly(SCHOOL);
+        assertThat(GeneratedExercises.practisedWords("我学。", List.of(study, SCHOOL), vocabulary))
+                .containsExactly(study);
+    }
+
+    @Test
+    void polyphoneTargetsAreNotLinkedBecauseTheTextDoesNotTellTheReading() {
+        WordDto longWord = word(5, "长", "cháng", "long");
+        WordDto grow = word(6, "长", "zhǎng", "to grow");
+        AllowedWords vocabulary = new AllowedWords(List.of("长", "朋友"));
+
+        assertThat(GeneratedExercises.practisedWords("朋友很长。", List.of(longWord, grow, FRIEND), vocabulary))
+                .containsExactly(FRIEND);
+        assertThat(GeneratedExercises.check(ExerciseType.TRANSLATION, new GeneratedExercise.Translation("de", "en",
+                "很长。"), List.of(longWord, grow), vocabulary, existing, 0, new Random(1)).rejection())
+                .startsWith("uses no target word");
+    }
+
+    @Test
     void sentenceOfStoredAnswersMatchesTheBuiltSentence() {
         assertThat(GeneratedExercises.sentenceOf(new ExerciseAnswer.WordOrder(
                 List.of(List.of("我", "去", "学校"))))).isEqualTo("我去学校");

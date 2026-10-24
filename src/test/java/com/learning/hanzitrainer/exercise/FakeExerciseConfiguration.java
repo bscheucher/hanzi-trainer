@@ -12,4 +12,10 @@ public class FakeExerciseConfiguration {
     FakeExerciseGenerator fakeExerciseGenerator() {
         return new FakeExerciseGenerator();
     }
+
+    @Bean
+    @Primary
+    FakeTranslationGrader fakeTranslationGrader() {
+        return new FakeTranslationGrader();
+    }
 }

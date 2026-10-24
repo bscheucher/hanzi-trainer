@@ -103,7 +103,9 @@ public interface ExerciseGenerator {
 - **Target words**: the lesson's words, spread evenly; words with the fewest stored exercises of the requested
   type first (count via `exercise_word`, ties in random order).
 - An exercise practises (`exercise_word`) the target words its Chinese sentence contains; one that contains none is
-  discarded. `generated_by` is the model name. Model: `hanzi.llm.exercise-model` (default `claude-sonnet-5-5`).
+  discarded. "Contains" means as a whole word: the sentence is split into allowed words, longest match first from
+  the left, so 学 is not in 我去学校. Target words that share their hanzi (polyphones, e.g. 长 cháng / zhǎng) are
+  never linked, since the text does not tell which reading is meant. `generated_by` is the model name. Model: `hanzi.llm.exercise-model` (default `claude-sonnet-5-5`).
 - **Allowed words**: all words in the vocabulary **except** those that appear only in lessons of the same textbook
   with a higher `lesson_no`, plus a fixed whitelist of basic function words
   (`的 了 是 不 很 吗 呢 也 都 和 在 我 你 他 她 们 这 那 个 有`) and numerals (`一 二 三 四 五 六 七 八 九 十 两 百`).
@@ -119,7 +121,8 @@ LLMs ignore vocabulary constraints, so check in code:
 - Build the set of characters from all allowed words.
 - Every CJK character in a generated sentence must be in that set (punctuation ignored).
 - Exercises failing the check are discarded; regenerate the missing count up to 2 more times;
-  report `rejected` count in the generation job. Accepted exercises are stored at once, so a job that fails
+  report `rejected` count in the generation job. A reply that cannot be read (e.g. JSON cut off at the token
+  limit) counts as one rejection and is retried the same way. Accepted exercises are stored at once, so a job that fails
   later keeps them.
 
 Also discard: duplicate sentences (vs. stored exercises for this lesson), `FILL_BLANK` whose correct

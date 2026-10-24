@@ -1,6 +1,7 @@
 package com.learning.hanzitrainer.exercise;
 
 import com.learning.hanzitrainer.common.StructuredReply;
+import com.learning.hanzitrainer.common.UnreadableReplyException;
 import com.learning.hanzitrainer.word.WordDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +53,7 @@ public class SpringAiExerciseGenerator implements ExerciseGenerator {
         LlmUsage.log(log, "Generating " + type, modelName, reply.response());
         Batch batch = reply.entity();
         if (batch == null || batch.exercises() == null) {
-            throw new IllegalStateException("Model " + modelName + " returned no exercises");
+            throw new UnreadableReplyException("Model " + modelName + " returned no exercises");
         }
         return batch.exercises().stream().filter(Objects::nonNull).map(GeneratedExercise.class::cast).toList();
     }

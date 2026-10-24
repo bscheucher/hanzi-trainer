@@ -17,6 +17,8 @@ import org.springframework.util.StringUtils;
  *
  * @param response the raw reply, for token usage; may be null
  * @param entity   null if the reply had no text
+ * @throws UnreadableReplyException from {@link #call} if the text does not parse, e.g. a reply cut off at the
+ *                                   token limit
  */
 public record StructuredReply<T>(ChatResponse response, T entity) {
 
@@ -31,7 +33,15 @@ public record StructuredReply<T>(ChatResponse response, T entity) {
                 .call()
                 .chatResponse();
         String text = text(response);
-        return new StructuredReply<>(response, text == null ? null : converter.convert(text));
+        if (text == null) {
+            return new StructuredReply<>(response, null);
+        }
+        try {
+            return new StructuredReply<>(response, converter.convert(text));
+        } catch (RuntimeException e) {
+            throw new UnreadableReplyException("The model's reply is not a valid " + type.getSimpleName()
+                    + ": " + e.getMessage(), e);
+        }
     }
 
     private static String text(ChatResponse response) {

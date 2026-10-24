@@ -2,6 +2,7 @@ package com.learning.hanzitrainer.exercise;
 
 import com.learning.hanzitrainer.cedict.HanziText;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,15 +24,39 @@ final class AllowedWords {
 
     private final Set<String> words;
     private final Set<Integer> characters;
+    private final int longestWord;
 
     AllowedWords(Collection<String> vocabulary) {
         words = new LinkedHashSet<>(vocabulary);
         words.addAll(BASIC);
         characters = words.stream().flatMapToInt(String::codePoints).boxed().collect(Collectors.toSet());
+        longestWord = words.stream().mapToInt(w -> w.codePointCount(0, w.length())).max().orElse(1);
     }
 
     Set<String> words() {
         return words;
+    }
+
+    /**
+     * Splits {@code text} into allowed words, longest match first from the left; any other character is a segment
+     * of its own. So 学 is not a word of 我去学校, but 学校 is.
+     */
+    List<String> segment(String text) {
+        int[] cps = text.codePoints().toArray();
+        List<String> segments = new ArrayList<>();
+        int i = 0;
+        while (i < cps.length) {
+            int length = 1;
+            for (int n = Math.min(longestWord, cps.length - i); n > 1; n--) {
+                if (words.contains(new String(cps, i, n))) {
+                    length = n;
+                    break;
+                }
+            }
+            segments.add(new String(cps, i, length));
+            i += length;
+        }
+        return segments;
     }
 
     /** The Chinese characters of {@code text} that no allowed word contains, sorted; punctuation is ignored. */

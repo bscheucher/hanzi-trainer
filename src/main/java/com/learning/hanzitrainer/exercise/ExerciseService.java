@@ -3,6 +3,7 @@ package com.learning.hanzitrainer.exercise;
 import com.learning.hanzitrainer.common.NotFoundException;
 import com.learning.hanzitrainer.textbook.LessonRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -38,8 +39,11 @@ public class ExerciseService {
         return toDtos(found, exerciseWords);
     }
 
-    /** Grades without storing anything: free practice does not touch review cards (spec 07). */
-    @Transactional(readOnly = true)
+    /**
+     * Grades without storing anything: free practice does not touch review cards (spec 07). Runs outside a
+     * transaction, so no database connection is held while a TRANSLATION answer waits for the LLM grader.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AnswerResult answer(long id, AnswerRequest request) {
         return grader.grade(find(id), request.response(), request.durationMs());
     }

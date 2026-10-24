@@ -3,6 +3,7 @@ package com.learning.hanzitrainer.exercise;
 import com.learning.hanzitrainer.common.BadRequestException;
 import com.learning.hanzitrainer.common.NotFoundException;
 import com.learning.hanzitrainer.common.ServiceUnavailableException;
+import com.learning.hanzitrainer.common.UnreadableReplyException;
 import com.learning.hanzitrainer.textbook.Lesson;
 import com.learning.hanzitrainer.textbook.LessonRepository;
 import com.learning.hanzitrainer.word.LessonWordRepository;
@@ -33,7 +34,8 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Generates sentence exercises for a lesson in the background (spec 07, "LLM generation"; spec 03). Jobs are held
  * in memory only. Per type, exercises that fail a check are discarded and the missing count is asked for again, at
- * most {@link #RETRIES} more times; each accepted exercise is stored right away.
+ * most {@link #RETRIES} more times; each accepted exercise is stored right away. An unreadable reply (e.g. JSON cut
+ * off at the token limit) counts as one rejection and is retried the same way.
  */
 @Service
 public class GenerationJobService {
@@ -118,7 +120,8 @@ public class GenerationJobService {
                 generate(job, lessonId, type, count);
             }
             job.status = GenerationJobDto.Status.DONE;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
+            // An Error too: otherwise the job would stay RUNNING and the frontend would poll forever.
             log.warn("Generation job {} for lesson {} failed", job.id, lessonId, e);
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             job.error = message.length() > MAX_ERROR_LENGTH ? message.substring(0, MAX_ERROR_LENGTH) : message;
@@ -131,8 +134,14 @@ public class GenerationJobService {
         for (int attempt = 0; attempt <= RETRIES && needed > 0; attempt++) {
             int asked = needed;
             Context context = tx.execute(s -> context(lessonId, type, asked));
-            List<GeneratedExercise> items = generator.generate(type, context.targets(),
-                    context.allowed().words(), needed);
+            List<GeneratedExercise> items;
+            try {
+                items = generator.generate(type, context.targets(), context.allowed().words(), needed);
+            } catch (UnreadableReplyException e) {
+                log.info("Generation job {}: rejected {} reply, {}", job.id, type, e.getMessage());
+                job.rejected.incrementAndGet();
+                continue;
+            }
             int sequence = context.sequence();
             for (GeneratedExercise item : items) {
                 if (needed == 0) {
