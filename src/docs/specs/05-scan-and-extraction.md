@@ -28,7 +28,9 @@ PENDING → RUNNING → DONE
 5. Timeout: 120 s per model call. At most `hanzi.extraction.max-concurrent` calls run at once (default 1 for
    Ollama, 2 for Anthropic); a page waits as `PENDING` for a free slot, and waiting does not count towards its
    timeout. On timeout the call is interrupted; the HTTP clients' own timeouts (`spring.ai.anthropic.timeout`,
-   `spring.http.clients.read-timeout`) are the backstop, and Spring AI retries are limited to 2 attempts.
+   `spring.http.clients.read-timeout`, both `hanzi.extraction.timeout`) are the backstop. The Anthropic SDK may
+   retry an interrupted call once (`spring.ai.anthropic.max-retries: 1`, spec 01), so a cancelled page can keep one
+   request running for up to one more timeout after its slot is released.
 
 On startup (before the web server accepts uploads), pages left `PENDING` or `RUNNING` are set to `FAILED`
 ("Interrupted by restart"): jobs live only in memory, so nothing would ever finish them.

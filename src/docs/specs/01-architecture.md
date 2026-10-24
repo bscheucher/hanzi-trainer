@@ -95,6 +95,7 @@ hanzi:
     provider: ${HANZI_LLM_PROVIDER:anthropic}                 # anthropic | ollama
     extraction-model: ${HANZI_EXTRACTION_MODEL:claude-opus-5-5}  # Ollama: a vision model, e.g. gemma3:4b
     exercise-model: ${HANZI_EXERCISE_MODEL:claude-sonnet-5-5}  # sentence exercises + translation grading
+    exercise-timeout: 300s   # HTTP timeout of one exercise call; extraction calls use extraction.timeout
   extraction:
     max-image-px: 2576   # Claude's high-resolution limit (long edge); the client resizes to the same value
     timeout: 120s        # per model call; local models on modest hardware may need more on a cold start
@@ -115,6 +116,14 @@ Model names are configuration, never hard-coded.
 - One `ChatClient` per purpose, built in `LlmConfig` from that `ChatModel` with the model name and `maxTokens`
   as default options: extraction now, exercises in M7. Current Claude models always think, so `maxTokens` is
   generous (16k), and no `temperature` is set (Claude Opus 5.5 rejects sampling parameters).
+- Timeouts per purpose: extraction calls use `hanzi.extraction.timeout` (120 s), the timeout configured on the
+  shared clients (`spring.ai.anthropic.timeout`, `spring.http.clients.read-timeout`); exercise calls (generation,
+  grading) use `hanzi.llm.exercise-timeout` (300 s), since a reply with thinking can take minutes. Anthropic takes
+  the timeout per call (`AnthropicChatOptions.timeout` on the exercise `ChatClient`); Ollama's timeout belongs to the
+  HTTP client, so exercises get an `OllamaChatModel` of their own.
+- Retries: Spring AI 2.0's Anthropic model does not use `spring.ai.retry`; the Anthropic SDK retries on its own,
+  including read timeouts and interrupted calls. `spring.ai.anthropic.max-retries: 1` keeps one retry for 429/529
+  while limiting paid duplicates. `spring.ai.retry.max-attempts: 2` applies to Ollama only.
 - Structured replies use native structured output via `common/StructuredReply`, not `responseEntity`: a thinking
   model returns the thinking block as the first generation (empty text), and `responseEntity` only parses the first.
 - If the selected provider is not configured (e.g. no `ANTHROPIC_API_KEY`), the app still starts; LLM endpoints
