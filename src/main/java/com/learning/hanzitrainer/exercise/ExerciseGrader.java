@@ -114,7 +114,7 @@ public class ExerciseGrader {
 
     /** Punctuation and spaces are ignored when comparing a translation with the reference. */
     private static String normalise(String chinese) {
-        return Punctuation.remove(chinese);
+        return Punctuation.removePunctuationAndSpaces(chinese);
     }
 
     private static AnswerResult hanziToMeaning(ExercisePrompt.HanziToMeaning prompt, ExerciseAnswer.HanziToMeaning answer,

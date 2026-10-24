@@ -293,9 +293,9 @@ class GenerationJobServiceTests {
             try {
                 release.await();
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                // like okio: the interrupt flag is cleared, and the call still returns a usable reply
             }
-            return List.of();
+            return List.of(fillBlank("我和我的___去学校。", "朋友"));
         });
         GenerationJobService service = service(Clock.systemUTC());
         long running = service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)).id();
@@ -309,6 +309,7 @@ class GenerationJobServiceTests {
         assertThat(service.get(running).error()).isEqualTo("Interrupted by shutdown"); // no retry after the interrupt
         assertThat(service.get(waiting).error()).isEqualTo("Interrupted by shutdown");
         assertThat(generator.calls()).hasSize(1);
+        assertThat(exercises.list(fx.lesson1, ExerciseType.FILL_BLANK)).isEmpty(); // the late reply is not stored
         assertThatThrownBy(() -> service.start(fx.lesson1, request(ExerciseType.FILL_BLANK)))
                 .isInstanceOf(ServiceUnavailableException.class);
     }

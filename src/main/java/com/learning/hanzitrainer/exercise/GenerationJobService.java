@@ -73,6 +73,7 @@ public class GenerationJobService {
     private final Clock clock;
     private final Map<Long, Job> jobs = new ConcurrentHashMap<>();
     private final Map<Long, ReentrantLock> lessonLocks = new ConcurrentHashMap<>();
+    private volatile boolean stopping;
     private final AtomicLong ids = new AtomicLong();
 
     @Autowired
@@ -103,6 +104,9 @@ public class GenerationJobService {
     /** Interrupts running jobs on shutdown, so no model calls are paid for after the app stopped. */
     @PreDestroy
     void shutdown() {
+        // The flag, not the interrupt, is what jobs check: HTTP clients may clear the interrupt flag when they abort
+        // a call (okio throws InterruptedIOException), and retry it.
+        stopping = true;
         executor.shutdownNow();
     }
 
@@ -164,15 +168,21 @@ public class GenerationJobService {
             return;
         }
         try {
+            stopIfStopping();
             AllowedWords allowed = tx.execute(s -> allowedWords(lessonId));
             for (ExerciseType type : types) {
                 generate(job, lessonId, type, count, allowed);
             }
             job.finish(GenerationJobDto.Status.DONE, null, clock);
         } catch (RuntimeException | Error e) {
-            if (e instanceof Interrupted || Thread.currentThread().isInterrupted()) {
-                // shutdownNow(), whichever exception the HTTP client turned the interrupt into: not a failure
-                log.info("Generation job {} for lesson {} interrupted by shutdown", job.id, lessonId);
+            if (e instanceof Stopped) {
+                log.info("Generation job {} for lesson {} stopped by shutdown", job.id, lessonId);
+                job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
+                return;
+            }
+            if (stopping) {
+                // Most likely the HTTP client's reaction to the interrupt, but keep the cause in the log.
+                log.info("Generation job {} for lesson {} failed during shutdown", job.id, lessonId, e);
                 job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
                 return;
             }
@@ -187,15 +197,15 @@ public class GenerationJobService {
     }
 
     private void generate(Job job, long lessonId, ExerciseType type, int count, AllowedWords allowed) {
+        stopIfStopping();
         Context context = tx.execute(s -> context(lessonId, type));
-        int calls = maxCalls(count);
         int needed = count;
-        for (int attempt = 0; attempt <= RETRIES && needed > 0 && calls > 0; attempt++) {
-            // The missing count, split into calls of at most MAX_PER_CALL so each reply stays short enough for
-            // the HTTP timeout.
-            for (int left = needed; left > 0 && needed > 0 && calls > 0; left -= MAX_PER_CALL, calls--) {
-                needed -= call(job, lessonId, type, Math.min(left, MAX_PER_CALL), context, allowed);
-            }
+        int round = 0; // what is left of the current round's missing count, asked for in calls of MAX_PER_CALL
+        for (int calls = maxCalls(count); calls > 0 && needed > 0; calls--) {
+            round = round > 0 ? Math.min(round, needed) : needed;
+            int asked = Math.min(round, MAX_PER_CALL);
+            round -= asked;
+            needed -= call(job, lessonId, type, asked, context, allowed);
         }
     }
 
@@ -206,7 +216,7 @@ public class GenerationJobService {
 
     /** One call to the model; returns how many of the {@code asked} exercises were stored. */
     private int call(Job job, long lessonId, ExerciseType type, int asked, Context context, AllowedWords allowed) {
-        stopIfInterrupted(); // shutdownNow(): make no further paid calls
+        stopIfStopping(); // make no further paid calls
         List<WordDto> targets = context.targets(asked, random);
         List<GeneratedExercise> items;
         try {
@@ -216,7 +226,6 @@ public class GenerationJobService {
             job.rejected.incrementAndGet();
             return 0;
         }
-        stopIfInterrupted(); // no JDBC on an interrupted thread
         int stored = 0;
         for (GeneratedExercise item : items) {
             if (stored == asked) {
@@ -229,6 +238,7 @@ public class GenerationJobService {
                 job.rejected.incrementAndGet();
                 continue;
             }
+            stopIfStopping(); // no JDBC on an interrupted thread
             tx.executeWithoutResult(s -> store(lessonId, type, result.built()));
             context.stored(result.built());
             stored++;
@@ -237,16 +247,16 @@ public class GenerationJobService {
         return stored;
     }
 
-    private static void stopIfInterrupted() {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new Interrupted();
+    private void stopIfStopping() {
+        if (stopping) {
+            throw new Stopped();
         }
     }
 
-    /** The job was interrupted by {@link #shutdown()}. */
-    private static final class Interrupted extends RuntimeException {
+    /** The job noticed {@link #shutdown()}. */
+    private static final class Stopped extends RuntimeException {
 
-        Interrupted() {
+        Stopped() {
             super(INTERRUPTED);
         }
     }
