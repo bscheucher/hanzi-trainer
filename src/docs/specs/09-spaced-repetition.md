@@ -12,6 +12,14 @@ Use FSRS (Free Spaced Repetition Scheduler) from the open-spaced-repetition proj
 - Do **not** write the formulas from memory; copy them from the upstream source.
 - Fuzzing of intervals: enabled (as upstream), but injectable `Random` so tests are deterministic.
 
+**Ported (M8):** py-fsrs **6.3.2** (PyPI `fsrs==6.3.2`, `fsrs/scheduler.py`, FSRS-6, 21 weights), as
+`review/FsrsScheduler.java`. No maintained Java port was used. Mapping decisions:
+- Upstream has no `New` state: `NEW` maps to upstream's initial card (Learning, step 0, no stability/difficulty).
+- Upstream cards have no `reps` / `lapses`: every review counts a rep; `Again` on a `REVIEW` card counts a lapse.
+- Python's `round` is half-to-even (`Math.rint`); `timedelta.days` floors. No new card fields were needed.
+- The fuzz `Random` is seeded from the card id and its `reps`, so a preview and the rating that follows give the
+  same due date.
+
 ```java
 public interface Scheduler {
     ScheduledCard review(CardSnapshot card, Rating rating, Instant now);
@@ -51,6 +59,9 @@ The Java scheduler must reproduce `state`, `stability`, `difficulty` (±1e-4) an
    10 minutes (per `review_log`) are excluded.
    **New-card limit:** at most 15 new cards introduced per local day (configurable via
    `hanzi.review.new-per-day` and `hanzi.review.time-zone`, default Europe/Vienna), counted from `review_log` entries with `state_before = NEW`.
+   **Cards that cannot be asked** are left out of the queue, the due counts and the forecast (as in practice sessions):
+   `TONE` for a word without Chinese syllables, `RECOGNITION` without `meaningEn` (unless a stored `FILL_BLANK`
+   practises the word), `WRITING` without `meaningEn` or with non-hanzi characters. They stay `NEW`.
 2. For each card the backend builds an exercise on the fly (not stored, `ExerciseDto.id = null`):
    - `RECOGNITION` → `HANZI_TO_MEANING`, or a stored `FILL_BLANK` containing the word if one exists (50 %)
    - `TONE` → `TONE`
@@ -72,9 +83,12 @@ To show intervals on buttons, `GET /api/reviews/due` items include
 
 ## Dashboard (`/review`)
 
-- Due now, due today, reviewed today, new cards left today.
+- Due now, due today, reviewed today, new cards left today. Due counts include `NEW` cards only up to the new cards
+  left today; "new cards left today" is the daily limit minus the new cards rated today, at most the new cards that
+  can be asked. "Today" is the local day in `hanzi.review.time-zone`.
 - Count per card state, per card type.
-- 30-day forecast bar chart of due cards (`GET /api/reviews/forecast?days=30` → `{date, count}[]`).
+- 30-day forecast bar chart of due cards (`GET /api/reviews/forecast?days=30` → `{date, count}[]`): scheduled
+  (non-`NEW`) cards per local day; overdue cards count on today.
 - Button **Start review**.
 
 ## Out of scope for v1
