@@ -31,6 +31,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -39,7 +40,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Generates sentence exercises for a lesson in the background (spec 07, "LLM generation"; spec 03). Jobs are held
  * in memory only. Per type, exercises that fail a check are discarded and the missing count is asked for again, at
- * most {@link #RETRIES} more times; each accepted exercise is stored right away. Jobs for the same lesson run one
+ * most {@link #RETRIES} more times, in calls of at most {@link #MAX_PER_CALL}; each accepted exercise is stored right
+ * away. Jobs for the same lesson run one
  * after another, so concurrent jobs do not store the same sentence twice. An unreadable reply (e.g. JSON cut
  * off at the token limit) counts as one rejection and is retried the same way.
  */
@@ -49,11 +51,14 @@ public class GenerationJobService {
     static final Set<ExerciseType> LLM_TYPES = Set.of(ExerciseType.FILL_BLANK, ExerciseType.WORD_ORDER,
             ExerciseType.TRANSLATION);
     static final int RETRIES = 2;
+    /** Exercises asked for in one model call; a reply with thinking and more of them can outlast the timeout. */
+    static final int MAX_PER_CALL = 5;
     /** How long a finished job can still be polled. */
     static final Duration KEEP_FINISHED = Duration.ofHours(1);
 
     private static final Logger log = LoggerFactory.getLogger(GenerationJobService.class);
     private static final int MAX_ERROR_LENGTH = 500;
+    private static final String INTERRUPTED = "Interrupted by shutdown";
 
     private final LessonRepository lessons;
     private final LessonWordRepository lessonWords;
@@ -121,11 +126,17 @@ public class GenerationJobService {
         evictFinished();
         Job job = new Job(ids.incrementAndGet());
         jobs.put(job.id, job);
-        executor.execute(() -> run(job, lessonId, types, request.count()));
+        try {
+            executor.execute(() -> run(job, lessonId, types, request.count()));
+        } catch (RejectedExecutionException e) {
+            jobs.remove(job.id); // shutting down; the job would otherwise stay RUNNING
+            throw new ServiceUnavailableException("The app is shutting down");
+        }
         return job.dto();
     }
 
     public GenerationJobDto get(long id) {
+        evictFinished();
         Job job = jobs.get(id);
         if (job == null) {
             throw new NotFoundException("Generation job", id);
@@ -142,7 +153,13 @@ public class GenerationJobService {
     private void run(Job job, long lessonId, List<ExerciseType> types, int count) {
         // Jobs for the same lesson run one after another, so each sees the sentences the other stored.
         ReentrantLock lock = lessonLocks.computeIfAbsent(lessonId, id -> new ReentrantLock());
-        lock.lock();
+        try {
+            lock.lockInterruptibly(); // shutdownNow() interrupts a job still waiting for the lesson
+        } catch (InterruptedException e) {
+            job.finish(GenerationJobDto.Status.FAILED, INTERRUPTED, clock);
+            Thread.currentThread().interrupt();
+            return;
+        }
         try {
             AllowedWords allowed = tx.execute(s -> allowedWords(lessonId));
             for (ExerciseType type : types) {
@@ -164,32 +181,46 @@ public class GenerationJobService {
         Context context = tx.execute(s -> context(lessonId, type));
         int needed = count;
         for (int attempt = 0; attempt <= RETRIES && needed > 0; attempt++) {
-            List<WordDto> targets = context.targets(needed, random);
-            List<GeneratedExercise> items;
-            try {
-                items = generator.generate(type, targets, allowed.words(), needed);
-            } catch (UnreadableReplyException e) {
-                log.info("Generation job {}: rejected {} reply, {}", job.id, type, e.getMessage());
+            // The missing count, split into calls of at most MAX_PER_CALL so each reply stays short enough for
+            // the HTTP timeout.
+            for (int left = needed; left > 0 && needed > 0; left -= MAX_PER_CALL) {
+                needed -= call(job, lessonId, type, Math.min(left, MAX_PER_CALL), context, allowed);
+            }
+        }
+    }
+
+    /** One call to the model; returns how many of the {@code asked} exercises were stored. */
+    private int call(Job job, long lessonId, ExerciseType type, int asked, Context context, AllowedWords allowed) {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new IllegalStateException(INTERRUPTED); // shutdownNow(): make no further paid calls
+        }
+        List<WordDto> targets = context.targets(asked, random);
+        List<GeneratedExercise> items;
+        try {
+            items = generator.generate(type, targets, allowed.words(), asked);
+        } catch (UnreadableReplyException e) {
+            log.info("Generation job {}: rejected {} reply, {}", job.id, type, e.getMessage());
+            job.rejected.incrementAndGet();
+            return 0;
+        }
+        int stored = 0;
+        for (GeneratedExercise item : items) {
+            if (stored == asked) {
+                break;
+            }
+            GeneratedExercises.Result result = GeneratedExercises.check(type, item, targets, allowed,
+                    context.sentences(), context.sequence(), random);
+            if (result.built() == null) {
+                log.info("Generation job {}: rejected {} exercise, {}", job.id, type, result.rejection());
                 job.rejected.incrementAndGet();
                 continue;
             }
-            for (GeneratedExercise item : items) {
-                if (needed == 0) {
-                    break;
-                }
-                GeneratedExercises.Result result = GeneratedExercises.check(type, item, targets, allowed,
-                        context.sentences(), context.sequence(), random);
-                if (result.built() == null) {
-                    log.info("Generation job {}: rejected {} exercise, {}", job.id, type, result.rejection());
-                    job.rejected.incrementAndGet();
-                    continue;
-                }
-                tx.executeWithoutResult(s -> store(lessonId, type, result.built()));
-                context.stored(result.built());
-                needed--;
-                job.created.incrementAndGet();
-            }
+            tx.executeWithoutResult(s -> store(lessonId, type, result.built()));
+            context.stored(result.built());
+            stored++;
+            job.created.incrementAndGet();
         }
+        return stored;
     }
 
     private AllowedWords allowedWords(long lessonId) {

@@ -99,7 +99,9 @@ public interface ExerciseGenerator {
 }
 ```
 
-- `count` is per type. Each call to the model asks for the missing count with that many target words.
+- `count` is per type. Each round asks for the missing count with that many target words, split into calls of at
+  most 5 exercises: a reply with thinking and more exercises can outlast the HTTP timeout (`hanzi.extraction.timeout`,
+  shared by all model calls).
 - **Target words**: the lesson's words, spread evenly; words with the fewest stored exercises of the requested
   type first (count via `exercise_word`, ties in random order).
 - An exercise practises (`exercise_word`) the target words its Chinese sentence contains; one that contains none is
@@ -119,8 +121,8 @@ public interface ExerciseGenerator {
 
 LLMs ignore vocabulary constraints, so check in code:
 - Build the set of characters from all allowed words.
-- Every character in a generated sentence (and `FILL_BLANK` option) must be in that set; punctuation and spaces,
-  including full-width ones, are ignored. So Latin letters and digits only pass when a vocabulary word has them
+- Every character in a generated sentence (and `FILL_BLANK` option) must be in that set; punctuation, symbols
+  (～ ￥ %) and spaces, including full-width ones, are ignored. So Latin letters and digits only pass when a vocabulary word has them
   (卡拉OK): numbers are written with the numerals, not `3`.
 - Exercises failing the check are discarded; regenerate the missing count up to 2 more times;
   report `rejected` count in the generation job. A reply that cannot be read (e.g. JSON cut off at the token
