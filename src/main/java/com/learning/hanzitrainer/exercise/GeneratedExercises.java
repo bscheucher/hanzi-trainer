@@ -5,12 +5,15 @@ import com.learning.hanzitrainer.word.WordDto;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Checks an exercise the LLM wrote and turns it into a stored prompt and answer (spec 07, "Allowed-character
@@ -67,7 +70,7 @@ final class GeneratedExercises {
         if (existingSentences.contains(built.sentence())) {
             return Result.rejected("duplicate sentence " + built.sentence());
         }
-        List<WordDto> words = targetWords.stream().filter(w -> built.sentence().contains(w.hanzi())).toList();
+        List<WordDto> words = practisedWords(built.sentence(), targetWords, allowed);
         if (words.isEmpty()) {
             return Result.rejected("uses no target word: " + built.sentence());
         }
@@ -76,6 +79,19 @@ final class GeneratedExercises {
                     words.stream().map(WordDto::hanzi).toList()), built.answer(), built.sentence(), words);
         }
         return ok(built.prompt(), built.answer(), built.sentence(), words);
+    }
+
+    /**
+     * The target words that are whole words of the segmented sentence. Targets with the same hanzi but different
+     * pinyin (polyphones) are left out: the text does not tell which reading the sentence uses.
+     */
+    static List<WordDto> practisedWords(String sentence, List<WordDto> targetWords, AllowedWords allowed) {
+        Set<String> segments = new HashSet<>(allowed.segment(sentence));
+        Map<String, Long> perHanzi = targetWords.stream()
+                .collect(Collectors.groupingBy(WordDto::hanzi, Collectors.counting()));
+        return targetWords.stream()
+                .filter(w -> perHanzi.get(w.hanzi()) == 1 && segments.contains(w.hanzi()))
+                .toList();
     }
 
     /** The Chinese sentence of a stored sentence exercise, as {@link Built#sentence()}. */

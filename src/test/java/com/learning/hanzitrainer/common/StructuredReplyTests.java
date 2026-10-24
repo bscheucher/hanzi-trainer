@@ -12,6 +12,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -39,6 +40,14 @@ class StructuredReplyTests {
         reply(new Generation(new AssistantMessage("")));
 
         assertThat(StructuredReply.call(client.prompt().user("x"), Answer.class).entity()).isNull();
+    }
+
+    @Test
+    void truncatedJsonIsAnUnreadableReply() {
+        reply(new Generation(new AssistantMessage("{\"word\": \"朋")));
+
+        assertThatThrownBy(() -> StructuredReply.call(client.prompt().user("x"), Answer.class))
+                .isInstanceOf(UnreadableReplyException.class).hasMessageContaining("not a valid Answer");
     }
 
     private void reply(Generation... generations) {

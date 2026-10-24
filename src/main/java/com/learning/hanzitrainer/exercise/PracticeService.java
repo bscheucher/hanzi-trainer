@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -112,7 +111,7 @@ public class PracticeService {
                 List<Long> wordIds = wordsByExercise.get(exerciseId);
                 if (wordIds.stream().noneMatch(used::contains)) {
                     used.addAll(wordIds);
-                    slots.add(new Slot(type, wordIds.getFirst(), null, byId.get(exerciseId)));
+                    slots.add(new Slot(type, Set.copyOf(wordIds), null, byId.get(exerciseId)));
                 }
             }
             return slots;
@@ -129,7 +128,7 @@ public class PracticeService {
                 }
             }
             if (askable) {
-                slots.add(new Slot(type, word.getId(), word, valid));
+                slots.add(new Slot(type, Set.of(word.getId()), word, valid));
             }
         }
         return slots;
@@ -161,36 +160,49 @@ public class PracticeService {
     }
 
     /**
-     * Reorders so that consecutive exercises practise different words whenever possible: each step takes the next
-     * slot of the word with the most slots left, other than the previous word (ties keep the given order).
+     * Reorders so that consecutive exercises share no word whenever possible (a sentence exercise may practise
+     * several): each step takes the first slot, sharing no word with the previous one, whose word with the most
+     * slots left has the most slots left (ties keep the given order).
      */
     static List<Slot> noSameWordInARow(List<Slot> slots) {
-        Map<Long, ArrayDeque<Slot>> byWord = new LinkedHashMap<>();
-        for (Slot slot : slots) {
-            byWord.computeIfAbsent(slot.wordId(), id -> new ArrayDeque<>()).add(slot);
-        }
+        Map<Long, Integer> left = new HashMap<>();
+        slots.forEach(slot -> slot.wordIds().forEach(id -> left.merge(id, 1, Integer::sum)));
+        List<Slot> remaining = new ArrayList<>(slots);
         List<Slot> ordered = new ArrayList<>();
-        Long previous = null;
-        while (ordered.size() < slots.size()) {
-            Long pick = null;
-            for (Map.Entry<Long, ArrayDeque<Slot>> e : byWord.entrySet()) {
-                if (e.getValue().isEmpty() || e.getKey().equals(previous)) {
-                    continue;
-                }
-                if (pick == null || e.getValue().size() > byWord.get(pick).size()) {
-                    pick = e.getKey();
-                }
-            }
+        Set<Long> previous = Set.of();
+        while (!remaining.isEmpty()) {
+            Slot pick = best(remaining, left, previous);
             if (pick == null) {
-                pick = previous; // only the previous word is left
+                pick = best(remaining, left, Set.of()); // only slots with a previous word are left
             }
-            ordered.add(byWord.get(pick).poll());
-            previous = pick;
+            remaining.remove(pick);
+            pick.wordIds().forEach(id -> left.merge(id, -1, Integer::sum));
+            ordered.add(pick);
+            previous = pick.wordIds();
         }
         return ordered;
     }
 
-    /** @param word set when an exercise still has to be generated; {@code exercise} set when one is stored */
-    record Slot(ExerciseType type, Long wordId, Word word, Exercise exercise) {
+    private static Slot best(List<Slot> remaining, Map<Long, Integer> left, Set<Long> previous) {
+        Slot best = null;
+        int bestLeft = -1;
+        for (Slot slot : remaining) {
+            if (slot.wordIds().stream().anyMatch(previous::contains)) {
+                continue;
+            }
+            int most = slot.wordIds().stream().mapToInt(left::get).max().orElse(0);
+            if (most > bestLeft) {
+                best = slot;
+                bestLeft = most;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * @param wordIds the words the exercise practises; one, except for a stored sentence exercise
+     * @param word    set when an exercise still has to be generated; {@code exercise} set when one is stored
+     */
+    record Slot(ExerciseType type, Set<Long> wordIds, Word word, Exercise exercise) {
     }
 }

@@ -14,6 +14,8 @@ public interface ExerciseGenerator {
      * @param targetWords  every exercise uses at least one of them
      * @param allowedWords the only words the sentences may use
      * @param count        how many exercises to write; the model may return fewer or more
+     * @throws com.learning.hanzitrainer.common.UnreadableReplyException if the reply cannot be read; the job
+     *                                                                   counts it as one rejection and retries
      */
     List<GeneratedExercise> generate(ExerciseType type, List<WordDto> targetWords, Set<String> allowedWords,
                                      int count);

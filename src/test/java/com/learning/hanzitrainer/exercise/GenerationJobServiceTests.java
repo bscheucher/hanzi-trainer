@@ -5,6 +5,7 @@ import com.learning.hanzitrainer.cedict.CedictImporter;
 import com.learning.hanzitrainer.common.BadRequestException;
 import com.learning.hanzitrainer.common.NotFoundException;
 import com.learning.hanzitrainer.common.ServiceUnavailableException;
+import com.learning.hanzitrainer.common.UnreadableReplyException;
 import com.learning.hanzitrainer.textbook.LessonRepository;
 import com.learning.hanzitrainer.word.ConfirmItem;
 import com.learning.hanzitrainer.word.ConfirmRequest;
@@ -22,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -156,6 +158,50 @@ class GenerationJobServiceTests {
         assertThat(job.status()).isEqualTo(GenerationJobDto.Status.FAILED);
         assertThat(job.error()).isEqualTo("model overloaded");
         assertThat(job.created()).isEqualTo(1);
+    }
+
+    @Test
+    void anUnreadableReplyCountsAsARejectionAndIsRetried() {
+        AtomicInteger round = new AtomicInteger();
+        generator.willAnswer(call -> {
+            if (round.getAndIncrement() == 0) {
+                throw new UnreadableReplyException("cut off at the token limit");
+            }
+            return List.of(fillBlank("我和我的___去学校。", "朋友"));
+        });
+
+        GenerationJobDto job = run(List.of(ExerciseType.FILL_BLANK), 1);
+
+        assertThat(job.status()).isEqualTo(GenerationJobDto.Status.DONE);
+        assertThat(job.created()).isEqualTo(1);
+        assertThat(job.rejected()).isEqualTo(1);
+        assertThat(generator.calls()).hasSize(2);
+    }
+
+    @Test
+    void anErrorFailsTheJobInsteadOfLeavingItRunning() {
+        generator.willAnswer(call -> {
+            throw new StackOverflowError();
+        });
+
+        GenerationJobDto job = run(List.of(ExerciseType.FILL_BLANK), 1);
+
+        assertThat(job.status()).isEqualTo(GenerationJobDto.Status.FAILED);
+        assertThat(job.error()).isEqualTo("StackOverflowError");
+    }
+
+    @Test
+    void aTranslationIsGradedWithoutHoldingATransaction(@Autowired FakeTranslationGrader grader) {
+        generator.willAnswer(call -> List.of(new GeneratedExercise.Translation("Ich gehe zur Schule.",
+                "I go to school.", "我去学校。")));
+        run(List.of(ExerciseType.TRANSLATION), 1);
+        long id = exercises.list(fx.lesson1, ExerciseType.TRANSLATION).getFirst().id();
+
+        AnswerResult result = exercises.answer(id, new AnswerRequest(
+                JsonNodeFactory.instance.objectNode().put("text", "我去学"), 5_000L, null));
+
+        assertThat(result.score()).isEqualTo(0.5);
+        assertThat(grader.calledInTransaction()).isFalse();
     }
 
     @Test
