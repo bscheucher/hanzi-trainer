@@ -100,8 +100,8 @@ public interface ExerciseGenerator {
 ```
 
 - `count` is per type. Each round asks for the missing count with that many target words, split into calls of at
-  most 5 exercises: a reply with thinking and more exercises can outlast the HTTP timeout (`hanzi.extraction.timeout`,
-  shared by all model calls). A type makes at most ⌈count / 5⌉ + 2 calls, so retries cost at most 2 extra calls.
+  most 5 exercises: a reply with thinking and more exercises can outlast the HTTP timeout (`hanzi.llm.exercise-timeout`,
+  spec 01). A type makes at most ⌈count / 5⌉ + 2 calls, so retries cost at most 2 extra calls.
   Among words with the same stored count, those already targeted in the job come last until every word was.
 - **Target words**: the lesson's words, spread evenly; words with the fewest stored exercises of the requested
   type first (count via `exercise_word`, ties in random order).
